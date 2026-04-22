@@ -1,0 +1,23 @@
+import { connectDB } from "../../../lib/mongodb";
+import Payment from "../../../models/Payment";
+
+export async function GET() {
+  await connectDB();
+
+  const payments = await Payment.find();
+
+  const map = {};
+
+  for (let p of payments) {
+    const key = p.tenant + "_" + p.month;
+
+    if (!map[key]) {
+      map[key] = p;
+    } else {
+      // 🔥 DELETE DUPLICATE
+      await Payment.findByIdAndDelete(p._id);
+    }
+  }
+
+  return Response.json({ message: "Cleaned ✅" });
+}
