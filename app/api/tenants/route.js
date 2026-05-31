@@ -8,58 +8,59 @@ function verifyToken(req) {
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return null;
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
-  try {
-    return jwt.verify(token, process.env.JWT_SECRET);
-  } catch {
-    return null;
-  }
+  try { return jwt.verify(token, process.env.JWT_SECRET); }
+  catch { return null; }
 }
 
-// GET - Sab tenants
+function monthIndex(d) { return d.getFullYear() * 100 + (d.getMonth() + 1); }
+function monthLabel(d) { return d.toLocaleString("default", { month: "short", year: "numeric" }); }
+
 export async function GET() {
   try {
     await connectDB();
     const tenants = await Tenant.find().lean();
     return Response.json(tenants);
-  } catch (err) {
-    return Response.json([]);
-  }
+  } catch { return Response.json([]); }
 }
 
-// POST - Naya tenant add
 export async function POST(req) {
   try {
     await connectDB();
     if (!verifyToken(req)) return Response.json({ success: false, message: "Unauthorized ❌" }, { status: 401 });
 
     const body = await req.json();
-    if (!body.name || !body.roomNumber) return Response.json({ success: false, message: "Name aur room number required ❌" });
+    if (!body.name || !body.roomNumber) return Response.json({ success: false, message: "Name aur room required ❌" });
 
     const tenant = await Tenant.create({
       name: body.name,
       phone: body.phone || "",
       roomNumber: body.roomNumber,
       rentAmount: Number(body.rentAmount) || 3000,
-      startDate: body.startDate || new Date(),
+      startDate: body.startDate ? new Date(body.startDate) : new Date(),
     });
 
-    // Room occupied mark karo
-    await Room.findOneAndUpdate(
-      { roomNumber: body.roomNumber },
-      { status: "occupied", tenantName: body.name }
-    );
+    await Room.findOneAndUpdate({ roomNumber: body.roomNumber }, { status: "occupied", tenantName: body.name });
 
-    // Is month ki payment entry banao
+    // Start date se aaj tak sab months auto generate karo
+    const start = new Date(tenant.startDate);
+    start.setDate(1);
     const now = new Date();
-    const month = now.toLocaleString("default", { month: "short", year: "numeric" });
-    await Payment.create({
-      tenant: tenant._id,
-      month,
-      totalRent: tenant.rentAmount,
-      paidAmount: 0,
-      remainingAmount: tenant.rentAmount,
-      status: "unpaid",
-    });
+    now.setDate(1);
+    let current = new Date(start);
+
+    while (current <= now) {
+      await Payment.create({
+        tenant: tenant._id,
+        roomNumber: tenant.roomNumber,
+        month: monthLabel(current),
+        monthIndex: monthIndex(current),
+        totalRent: tenant.rentAmount,
+        paidAmount: 0,
+        remainingAmount: tenant.rentAmount,
+        status: "unpaid",
+      });
+      current.setMonth(current.getMonth() + 1);
+    }
 
     return Response.json({ success: true, tenant });
   } catch (err) {
@@ -68,33 +69,26 @@ export async function POST(req) {
   }
 }
 
-// PUT - Tenant edit
 export async function PUT(req) {
   try {
     await connectDB();
     if (!verifyToken(req)) return Response.json({ success: false, message: "Unauthorized ❌" }, { status: 401 });
 
     const body = await req.json();
-    if (!body._id) return Response.json({ success: false, message: "ID required ❌" });
-
     const old = await Tenant.findById(body._id);
 
-    // Agar room change hua toh purana vacant karo
     if (old && old.roomNumber !== body.roomNumber) {
       await Room.findOneAndUpdate({ roomNumber: old.roomNumber }, { status: "vacant", tenantName: "" });
       await Room.findOneAndUpdate({ roomNumber: body.roomNumber }, { status: "occupied", tenantName: body.name });
-    } else if (old) {
+    } else {
       await Room.findOneAndUpdate({ roomNumber: body.roomNumber }, { tenantName: body.name });
     }
 
     const tenant = await Tenant.findByIdAndUpdate(body._id, body, { new: true });
     return Response.json({ success: true, tenant });
-  } catch (err) {
-    return Response.json({ success: false, message: "Server error ❌" }, { status: 500 });
-  }
+  } catch { return Response.json({ success: false, message: "Server error ❌" }, { status: 500 }); }
 }
 
-// DELETE - Tenant remove
 export async function DELETE(req) {
   try {
     await connectDB();
@@ -102,16 +96,12 @@ export async function DELETE(req) {
 
     const { id } = await req.json();
     const tenant = await Tenant.findById(id);
-    if (!tenant) return Response.json({ success: false, message: "Tenant not found ❌" });
+    if (!tenant) return Response.json({ success: false, message: "Not found ❌" });
 
-    // Room vacant karo
     await Room.findOneAndUpdate({ roomNumber: tenant.roomNumber }, { status: "vacant", tenantName: "" });
-    // Payments delete karo
     await Payment.deleteMany({ tenant: id });
     await Tenant.findByIdAndDelete(id);
 
     return Response.json({ success: true });
-  } catch (err) {
-    return Response.json({ success: false, message: "Server error ❌" }, { status: 500 });
-  }
+  } catch { return Response.json({ success: false, message: "Server error ❌" }, { status: 500 }); }
 }
