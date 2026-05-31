@@ -20,8 +20,7 @@ function TenantsContent() {
   const now = new Date()
   const thisMonth = months[now.getMonth()]
   const thisYear = now.getFullYear()
-  // ✅ FIX: Full month string banao comparison ke liye
-  const thisMonthFull = `${thisMonth} ${thisYear}` // e.g. "Jun 2025"
+  const thisMonthFull = `${thisMonth} ${thisYear}`
 
   useEffect(() => {
     if (msg) {
@@ -50,7 +49,6 @@ function TenantsContent() {
             depositAmount: found.depositAmount || 0,
             address: found.address || '',
             notes: found.notes || '',
-            // ✅ FIX: Date ko ISO format mein raho
             startDate: found.startDate
               ? new Date(found.startDate).toISOString().split('T')[0]
               : '',
@@ -93,7 +91,6 @@ function TenantsContent() {
     const res = await fetch(`/api/tenants/${selected._id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      // ✅ FIX: startDate properly send karo
       body: JSON.stringify({
         ...editForm,
         startDate: editForm.startDate ? new Date(editForm.startDate).toISOString() : undefined,
@@ -124,20 +121,21 @@ function TenantsContent() {
     }
   }
 
-  // ✅ FIXED: Cash payment — sahi body, freeze nahi hoga
+  // ✅ FINAL FIX: Sahi URL + sahi body
   async function handleCashPayment() {
     if (payLoading) return
     setPayLoading(true)
     setMsg('')
     const token = document.cookie.match(/token=([^;]+)/)?.[1] || ''
     try {
-      const res = await fetch('/api/payments', {
+      const res = await fetch('/api/payment/cash', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          tenant: selected._id,           // ✅ tenant ID
-          month: thisMonthFull,           // ✅ "Jun 2025" format
-          paidAmount: selected.rentAmount, // ✅ poora rent
+          tenantId: selected._id,
+          amount: selected.rentAmount,
+          month: thisMonth,
+          year: thisYear,
         }),
       })
       const data = await res.json()
@@ -147,17 +145,16 @@ function TenantsContent() {
         await fetchTenants()
       } else {
         setShowPayModal(false)
-        setMsg(`❌ ${data.message || 'Payment failed'}`)
+        setMsg(`❌ ${data.error || data.message || 'Payment failed'}`)
       }
     } catch (err) {
       setShowPayModal(false)
       setMsg(`❌ Error: ${err.message}`)
     } finally {
-      setPayLoading(false) // ✅ HAMESHA reset — freeze kabhi nahi hoga
+      setPayLoading(false)
     }
   }
 
-  // ✅ FIXED: Razorpay — har case mein payLoading false hoga
   async function handleOnlinePayment() {
     if (payLoading) return
     setPayLoading(true)
@@ -208,12 +205,12 @@ function TenantsContent() {
               setMsg(`❌ Verify failed: ${vData.error}`)
             }
           } finally {
-            setPayLoading(false) // ✅ handler ke baad
+            setPayLoading(false)
           }
         },
         modal: {
           ondismiss: () => {
-            setPayLoading(false) // ✅ modal close pe
+            setPayLoading(false)
             setMsg('ℹ️ Payment cancel hua')
           },
         },
@@ -221,12 +218,12 @@ function TenantsContent() {
       const rzp = new window.Razorpay(options)
       rzp.on('payment.failed', (r) => {
         setMsg(`❌ Payment failed: ${r.error.description}`)
-        setPayLoading(false) // ✅ failure pe
+        setPayLoading(false)
       })
       rzp.open()
     } catch (err) {
       setMsg(`❌ Payment error: ${err.message}`)
-      setPayLoading(false) // ✅ catch pe
+      setPayLoading(false)
     }
   }
 
@@ -244,14 +241,13 @@ function TenantsContent() {
   const active = tenants.filter(t => t.isActive !== false)
   const selectedFresh = selected ? tenants.find(t => t._id === selected._id) : null
 
-  // ✅ FIX: Month check — "Jun 2025" format se match karo
   const selectedPaid = selectedFresh?.payments?.some(p => {
-    const monthMatch = p.month === thisMonthFull || // "Jun 2025"
-      (p.month === thisMonth && String(p.year) === String(thisYear)) // "Jun" + 2025
+    const monthMatch =
+      p.month === thisMonthFull ||
+      (p.month === thisMonth && String(p.year) === String(thisYear))
     return monthMatch && p.status === 'paid'
   })
 
-  // Total baaki
   const totalDue = selectedFresh?.payments
     ?.filter(p => p.status !== 'paid')
     ?.reduce((s, p) => s + (p.remainingAmount || 0), 0) || 0
@@ -278,7 +274,6 @@ function TenantsContent() {
           ) : active.length === 0 ? (
             <p style={{ padding: '24px 16px', color: '#64748b', textAlign: 'center', fontSize: '13px' }}>Koi tenant nahi. Add karo!</p>
           ) : active.map(t => {
-            // ✅ FIX: Paid check both formats
             const paid = t.payments?.some(p => {
               const mFull = `${thisMonth} ${thisYear}`
               return (p.month === mFull || (p.month === thisMonth && String(p.year) === String(thisYear))) && p.status === 'paid'
@@ -355,7 +350,6 @@ function TenantsContent() {
                     ))}
                   </div>
 
-                  {/* Total baaki banner */}
                   {totalDue > 0 && (
                     <div style={{ background: '#450a0a', border: '1px solid #dc2626', borderRadius: '10px', padding: '12px 18px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: '#fca5a5', fontWeight: 600 }}>⚠️ Total Baaki</span>
@@ -363,7 +357,6 @@ function TenantsContent() {
                     </div>
                   )}
 
-                  {/* Current month rent card */}
                   <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '18px 20px', marginBottom: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
@@ -389,7 +382,6 @@ function TenantsContent() {
                     </div>
                   </div>
 
-                  {/* Payment History */}
                   <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px' }}>
                     <div style={{ padding: '14px 18px', borderBottom: '1px solid #334155', fontWeight: 600 }}>📋 Poora Hisaab</div>
                     {!selectedFresh.payments?.length ? (
@@ -397,15 +389,15 @@ function TenantsContent() {
                     ) : [...selectedFresh.payments].reverse().map((p, i) => (
                       <div key={i} style={{ padding: '12px 18px', borderBottom: '1px solid #0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
-                          <div style={{ fontWeight: 500, fontSize: '14px' }}>{p.month}</div>
+                          <div style={{ fontWeight: 500, fontSize: '14px' }}>{p.month} {p.year || ''}</div>
                           <div style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>
-                            {p.paidBy === 'cash' ? '💵 Cash' : p.paidBy === 'razorpay' ? '💳 Razorpay' : '—'}
+                            {p.paidBy === 'cash' || p.method === 'cash' ? '💵 Cash' : p.paidBy === 'razorpay' || p.method === 'razorpay' ? '💳 Razorpay' : '—'}
                             {p.paidAt ? ` · ${new Date(p.paidAt).toLocaleDateString('en-IN')}` : ''}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontWeight: 600, color: p.status === 'paid' ? '#10b981' : p.status === 'partial' ? '#f59e0b' : '#ef4444' }}>
-                            ₹{p.paidAmount} / ₹{p.totalRent}
+                            {p.paidAmount != null ? `₹${p.paidAmount}` : `₹${p.amount || 0}`} / ₹{p.totalRent || p.rentAmount || selectedFresh.rentAmount}
                           </div>
                           <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', background: p.status === 'paid' ? '#14532d' : p.status === 'partial' ? '#78350f' : '#7f1d1d', color: p.status === 'paid' ? '#86efac' : p.status === 'partial' ? '#fde68a' : '#fca5a5' }}>
                             {p.status === 'paid' ? 'Paid ✅' : p.status === 'partial' ? `₹${p.remainingAmount} baki` : 'Unpaid ❌'}
@@ -416,7 +408,6 @@ function TenantsContent() {
                   </div>
                 </>
               ) : (
-                /* ✅ FIXED Edit Form — startDate properly handle */
                 <form onSubmit={handleEdit} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '24px' }}>
                   <h3 style={{ margin: '0 0 20px', fontSize: '16px' }}>✏️ Tenant Edit</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
@@ -436,7 +427,6 @@ function TenantsContent() {
                         />
                       </div>
                     ))}
-                    {/* ✅ FIX: startDate field — date input type use karo */}
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={{ display: 'block', marginBottom: '5px', color: '#94a3b8', fontSize: '12px' }}>Rehne Ki Start Date</label>
                       <input
@@ -446,7 +436,7 @@ function TenantsContent() {
                         style={{ width: '100%', padding: '10px 12px', background: '#0f172a', border: '1px solid #334155', borderRadius: '7px', color: '#f1f5f9', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }}
                       />
                       <p style={{ margin: '4px 0 0', color: '#475569', fontSize: '11px' }}>
-                        ⚠️ Yeh date galat hai toh 1970 se months ban jaate hain — sahi date dalo!
+                        ⚠️ Date galat hone se 1970 se months ban jaate hain — sahi date dalo!
                       </p>
                     </div>
                   </div>
@@ -465,7 +455,7 @@ function TenantsContent() {
         </div>
       </div>
 
-      {/* ✅ FIXED Payment Modal */}
+      {/* Payment Modal */}
       {showPayModal && selectedFresh && (
         <div
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}
@@ -480,7 +470,6 @@ function TenantsContent() {
               <button onClick={() => { if (!payLoading) setShowPayModal(false) }} style={{ background: '#334155', border: 'none', color: '#94a3b8', width: '28px', height: '28px', borderRadius: '50%', cursor: 'pointer' }}>✕</button>
             </div>
 
-            {/* ✅ FIX: Correct info show karo */}
             <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 2px' }}>
               👤 {selectedFresh.name} &nbsp;·&nbsp; 🏠 Room {selectedFresh.roomNumber}
             </p>
