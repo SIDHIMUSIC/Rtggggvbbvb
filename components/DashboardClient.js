@@ -11,21 +11,13 @@ export default function DashboardClient({ data }) {
   const [payments, setPayments] = useState(initialPayments);
   const [activeTab, setActiveTab] = useState("rooms");
 
-  // Room form
   const [roomForm, setRoomForm] = useState({ roomNumber: "", rent: "3000" });
-
-  // Tenant form
   const [tenantForm, setTenantForm] = useState({ name: "", phone: "", roomNumber: "", rentAmount: "3000", startDate: "" });
   const [editTenant, setEditTenant] = useState(null);
   const [showTenantForm, setShowTenantForm] = useState(false);
-
-  // Tenant detail modal
   const [selectedTenant, setSelectedTenant] = useState(null);
-
-  // Payment modal
   const [payModal, setPayModal] = useState(null);
   const [payAmount, setPayAmount] = useState("");
-
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -73,7 +65,7 @@ export default function DashboardClient({ data }) {
       setShowTenantForm(false);
       showMsg(editTenant ? "Update ho gaya ✅" : "Tenant add ho gaya ✅");
       router.refresh();
-    } else showMsg(d.message);
+    } else showMsg(d.message || d.error || "Kuch galat hua ❌");
     setLoading(false);
   }
 
@@ -85,7 +77,6 @@ export default function DashboardClient({ data }) {
     else showMsg(d.message);
   }
 
-  // Tenant ki payments
   function tenantPayments(tenantId) {
     return payments.filter(p => {
       const tid = p.tenant?._id || p.tenant;
@@ -93,28 +84,52 @@ export default function DashboardClient({ data }) {
     }).sort((a, b) => (a.monthIndex || 0) - (b.monthIndex || 0));
   }
 
-  // ── PAYMENTS ──
+  // ✅ FIXED: markPaid — freeze nahi hoga ab
   async function markPaid(method) {
     if (!payAmount || Number(payAmount) <= 0) return showMsg("Amount daalo ❌");
+    if (loading) return; // double click rokna
     setLoading(true);
-    const res = await fetch("/api/payments", {
-      method: "POST", headers: H,
-      body: JSON.stringify({ paymentId: payModal._id, amount: Number(payAmount), method })
-    });
-    const d = await res.json();
-    if (d.success) {
-      setPayments(prev => {
-        const updated = [...prev];
-        d.payments.forEach(np => {
-          const idx = updated.findIndex(p => p._id === np._id);
-          if (idx !== -1) updated[idx] = np; else updated.push(np);
-        });
-        return updated;
+    try {
+      const res = await fetch("/api/payments", {
+        method: "POST",
+        headers: H,
+        body: JSON.stringify({
+          paymentId: payModal._id,
+          amount: Number(payAmount),
+          method,
+        }),
       });
-      setPayModal(null); setPayAmount("");
-      showMsg("Payment mark ho gaya ✅");
-    } else showMsg(d.message);
-    setLoading(false);
+      const d = await res.json();
+
+      if (d.success || res.ok) {
+        // ✅ FIX: d.payments ho ya na ho — dono handle karo
+        if (d.payments && Array.isArray(d.payments)) {
+          setPayments(prev => {
+            const updated = [...prev];
+            d.payments.forEach(np => {
+              const idx = updated.findIndex(p => p._id === np._id);
+              if (idx !== -1) updated[idx] = np;
+              else updated.push(np);
+            });
+            return updated;
+          });
+        } else {
+          // ✅ Payments reload karo agar response mein nahi aaya
+          const freshRes = await fetch("/api/payments", { headers: H });
+          const freshData = await freshRes.json();
+          if (Array.isArray(freshData)) setPayments(freshData);
+        }
+        setPayModal(null);
+        setPayAmount("");
+        showMsg("✅ Payment mark ho gaya!");
+      } else {
+        showMsg(`❌ ${d.message || d.error || "Payment failed"}`);
+      }
+    } catch (err) {
+      showMsg(`❌ Error: ${err.message}`);
+    } finally {
+      setLoading(false); // ✅ HAMESHA reset — freeze kabhi nahi hoga
+    }
   }
 
   async function logout() {
@@ -126,8 +141,8 @@ export default function DashboardClient({ data }) {
     { label: "Total Rooms", value: rooms.length, color: "bg-blue-500" },
     { label: "Occupied", value: occupiedRooms, color: "bg-red-500" },
     { label: "Vacant", value: vacantRooms, color: "bg-green-500" },
-    { label: "Total Income", value: `₹${totalIncome}`, color: "bg-emerald-600" },
-    { label: "Total Pending", value: `₹${totalPending}`, color: "bg-orange-500" },
+    { label: "Total Income", value: `₹${totalIncome.toLocaleString()}`, color: "bg-emerald-600" },
+    { label: "Total Pending", value: `₹${totalPending.toLocaleString()}`, color: "bg-orange-500" },
     { label: "Total Tenants", value: tenants.length, color: "bg-purple-500" },
   ];
 
@@ -141,7 +156,6 @@ export default function DashboardClient({ data }) {
       </div>
 
       <div className="px-4">
-        {/* Msg */}
         {msg && (
           <div className={`mb-3 p-3 rounded-lg text-sm text-center font-medium ${msg.includes("✅") ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
             {msg}
@@ -184,7 +198,6 @@ export default function DashboardClient({ data }) {
                 </button>
               </div>
             </div>
-
             <div className="grid gap-3">
               {rooms.map(room => (
                 <div key={room._id} className="bg-white rounded-xl p-4 shadow flex justify-between items-center">
@@ -214,7 +227,6 @@ export default function DashboardClient({ data }) {
               className="w-full bg-blue-600 text-white py-3 rounded-xl mb-4 font-medium">
               ➕ Naya Tenant Add Karo
             </button>
-
             <div className="grid gap-3">
               {tenants.map(t => {
                 const tp = tenantPayments(t._id);
@@ -230,8 +242,17 @@ export default function DashboardClient({ data }) {
                         {t.startDate && <p className="text-xs text-gray-400">Since: {new Date(t.startDate).toLocaleDateString("en-IN")}</p>}
                       </div>
                       <div className="flex flex-col gap-1">
-                        <button onClick={() => { setEditTenant(t); setTenantForm({ name: t.name, phone: t.phone || "", roomNumber: t.roomNumber, rentAmount: String(t.rentAmount), startDate: t.startDate?.slice(0, 10) || "" }); setShowTenantForm(true); }}
-                          className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">Edit</button>
+                        <button onClick={() => {
+                          setEditTenant(t);
+                          setTenantForm({
+                            name: t.name,
+                            phone: t.phone || "",
+                            roomNumber: t.roomNumber,
+                            rentAmount: String(t.rentAmount),
+                            startDate: t.startDate ? new Date(t.startDate).toISOString().split('T')[0] : "",
+                          });
+                          setShowTenantForm(true);
+                        }} className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">Edit</button>
                         <button onClick={() => deleteTenant(t._id)}
                           className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Remove</button>
                       </div>
@@ -240,7 +261,6 @@ export default function DashboardClient({ data }) {
                       <span className="text-green-600 font-medium">Paid: ₹{totalPaid}</span>
                       <span className="text-red-500 font-medium">Due: ₹{totalDue}</span>
                     </div>
-                    {/* Month-wise payments */}
                     <button onClick={() => setSelectedTenant(selectedTenant?._id === t._id ? null : t)}
                       className="w-full text-xs bg-gray-100 text-gray-600 py-2 rounded-lg">
                       {selectedTenant?._id === t._id ? "▲ Band Karo" : "▼ Mahine Ka Hisaab Dekho"}
@@ -287,7 +307,6 @@ export default function DashboardClient({ data }) {
         {activeTab === "payments" && (
           <div>
             <div className="grid gap-3">
-              {/* Group by room/tenant — only occupied rooms */}
               {rooms.filter(r => r.status === "occupied").map(room => {
                 const tenant = tenants.find(t => t.roomNumber === room.roomNumber);
                 if (!tenant) return null;
@@ -307,8 +326,6 @@ export default function DashboardClient({ data }) {
                         <p className="text-xs text-gray-400">₹{tenant.rentAmount}/month</p>
                       </div>
                     </div>
-
-                    {/* Month wise summary */}
                     <div className="grid gap-1 mb-2">
                       {tp.map(p => (
                         <div key={p._id} className="flex justify-between items-center text-xs py-1 border-b border-gray-100">
@@ -322,7 +339,6 @@ export default function DashboardClient({ data }) {
                         </div>
                       ))}
                     </div>
-
                     {latestUnpaid && (
                       <button onClick={() => { setPayModal(latestUnpaid); setPayAmount(String(latestUnpaid.remainingAmount)); }}
                         className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium">
@@ -376,30 +392,38 @@ export default function DashboardClient({ data }) {
           <div className="bg-white w-full rounded-t-2xl p-5">
             <h2 className="font-bold text-lg mb-1">💰 Payment Mark Karo</h2>
             <p className="text-sm text-gray-500 mb-1">
-              {payModal.tenant?.name || "—"} — Room {payModal.tenant?.roomNumber || payModal.roomNumber}
+              {payModal.tenant?.name || "—"} — Room {payModal.tenant?.roomNumber || payModal.roomNumber || "—"}
             </p>
             <p className="text-sm text-gray-500 mb-3">📅 {payModal.month}</p>
             <div className="flex justify-between text-sm mb-3">
               <span className="text-green-600">Paid: ₹{payModal.paidAmount}</span>
               <span className="text-red-500">Pending: ₹{payModal.remainingAmount}</span>
             </div>
-            <input className="border w-full p-3 rounded-lg mb-4 text-lg font-bold" type="number"
+            <input className="border w-full p-3 rounded-lg mb-2 text-lg font-bold" type="number"
               placeholder="Amount" value={payAmount} onChange={e => setPayAmount(e.target.value)} />
             <p className="text-xs text-gray-400 mb-3 text-center">
               💡 Zyada amount doge toh agle mahine mein auto adjust ho jayega
             </p>
             <div className="flex gap-2 mb-3">
-              <button onClick={() => markPaid("cash")} disabled={loading}
+              <button
+                onClick={() => markPaid("cash")}
+                disabled={loading}
                 className="flex-1 bg-green-600 text-white py-3 rounded-xl font-medium disabled:opacity-50">
-                💵 Cash
+                {loading ? "⏳..." : "💵 Cash"}
               </button>
-              <button onClick={() => markPaid("razorpay")} disabled={loading}
+              <button
+                onClick={() => markPaid("razorpay")}
+                disabled={loading}
                 className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-medium disabled:opacity-50">
-                💳 Razorpay
+                {loading ? "⏳..." : "💳 Razorpay"}
               </button>
             </div>
-            <button onClick={() => { setPayModal(null); setPayAmount(""); }}
-              className="w-full border py-2 rounded-xl text-sm text-gray-600">Cancel</button>
+            <button
+              onClick={() => { if (!loading) { setPayModal(null); setPayAmount(""); } }}
+              disabled={loading}
+              className="w-full border py-2 rounded-xl text-sm text-gray-600 disabled:opacity-50">
+              Cancel
+            </button>
           </div>
         </div>
       )}
