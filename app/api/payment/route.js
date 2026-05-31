@@ -3,130 +3,86 @@ import Payment from "../../../models/Payment";
 import Tenant from "../../../models/Tenant";
 import jwt from "jsonwebtoken";
 
-// ===============================
-// GET
-// ===============================
-export async function GET() {
-  await connectDB();
-  const data = await Payment.find().populate("tenant");
-  return Response.json(data);
+function verifyToken(req) {
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader) return null;
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+  try {
+    return jwt.verify(token, process.env.JWT_SECRET);
+  } catch {
+    return null;
+  }
 }
 
-// ===============================
-// POST (🔥 SMART PAYMENT SYSTEM)
-// ===============================
+// GET - Sab payments with tenant info
+export async function GET() {
+  try {
+    await connectDB();
+    const payments = await Payment.find()
+      .populate("tenant", "name phone roomNumber")
+      .sort({ createdAt: -1 })
+      .lean();
+    return Response.json(payments);
+  } catch (err) {
+    return Response.json([]);
+  }
+}
+
+// POST - Payment mark karo (cash ya razorpay)
 export async function POST(req) {
   try {
     await connectDB();
-
-    // 🔐 JWT CHECK
-    const token = req.headers.get("authorization");
-
-    if (!token) {
-      return Response.json({
-        success: false,
-        message: "No token ❌",
-      });
-    }
-
-    try {
-      jwt.verify(token, process.env.JWT_SECRET);
-    } catch {
-      return Response.json({
-        success: false,
-        message: "Invalid token ❌",
-      });
-    }
+    if (!verifyToken(req)) return Response.json({ success: false, message: "Unauthorized ❌" }, { status: 401 });
 
     const body = await req.json();
+    // body: { paymentId, amount, method }
 
-    const tenant = await Tenant.findById(body.tenant);
+    const payment = await Payment.findById(body.paymentId);
+    if (!payment) return Response.json({ success: false, message: "Payment not found ❌" });
 
-    if (!tenant) {
-      return Response.json({
-        success: false,
-        message: "Tenant not found ❌",
-      });
+    const amount = Number(body.amount);
+    if (!amount || amount <= 0) return Response.json({ success: false, message: "Invalid amount ❌" });
+
+    payment.paidAmount = Math.min(payment.paidAmount + amount, payment.totalRent);
+    payment.remainingAmount = payment.totalRent - payment.paidAmount;
+    payment.status = payment.remainingAmount === 0 ? "paid" : "partial";
+    payment.paidAt = new Date();
+    if (body.method === "razorpay") {
+      payment.razorpayPaymentId = body.razorpayPaymentId || "";
     }
 
-    let remaining = body.paidAmount;
-
-    if (!remaining || remaining <= 0) {
-      return Response.json({
-        success: false,
-        message: "Invalid amount ❌",
-      });
-    }
-
-    // 🔥 ALL PAYMENTS SORTED (OLD → NEW)
-    const payments = await Payment.find({
-      tenant: body.tenant,
-    }).sort({ createdAt: 1 });
-
-    // ===============================
-    // 🔥 STEP 1: CLEAR OLD DUES FIRST
-    // ===============================
-    for (let p of payments) {
-      if (remaining <= 0) break;
-
-      if (p.remainingAmount > 0) {
-        if (remaining >= p.remainingAmount) {
-          // FULL CLEAR
-          remaining -= p.remainingAmount;
-          p.paidAmount = p.totalRent;
-          p.remainingAmount = 0;
-          p.status = "paid";
-        } else {
-          // PARTIAL
-          p.paidAmount += remaining;
-          p.remainingAmount -= remaining;
-          p.status = "partial";
-          remaining = 0;
-        }
-
-        await p.save();
-      }
-    }
-
-    // ===============================
-    // 🔥 STEP 2: अगर अभी भी पैसा बचा → ADVANCE
-    // ===============================
-    if (remaining > 0) {
-      // future payments खोज
-      const futurePayments = await Payment.find({
-        tenant: body.tenant,
-        remainingAmount: { $gt: 0 },
-      }).sort({ createdAt: 1 });
-
-      for (let p of futurePayments) {
-        if (remaining <= 0) break;
-
-        if (remaining >= p.remainingAmount) {
-          remaining -= p.remainingAmount;
-          p.paidAmount = p.totalRent;
-          p.remainingAmount = 0;
-          p.status = "paid";
-        } else {
-          p.paidAmount += remaining;
-          p.remainingAmount -= remaining;
-          p.status = "partial";
-          remaining = 0;
-        }
-
-        await p.save();
-      }
-    }
-
-    return Response.json({
-      success: true,
-      advanceLeft: remaining, // 🔥 extra पैसा (optional use)
-    });
-
+    await payment.save();
+    return Response.json({ success: true, payment });
   } catch (err) {
-    console.log("PAYMENT ERROR:", err);
-    return Response.json({
-      success: false,
-      message: "Server error ❌",
-    });
+    return Response.json({ success: false, message: "Server error ❌" }, { status: 500 });
+  }
+}
+
+// PUT - New month ki payment generate karo sab tenants ke liye
+export async function PUT(req) {
+  try {
+    await connectDB();
+    if (!verifyToken(req)) return Response.json({ success: false, message: "Unauthorized ❌" }, { status: 401 });
+
+    const { month } = await req.json();
+    const tenants = await Tenant.find().lean();
+
+    for (const t of tenants) {
+      const exists = await Payment.findOne({ tenant: t._id, month });
+      if (!exists) {
+        await Payment.create({
+          tenant: t._id,
+          month,
+          totalRent: t.rentAmount || 3000,
+          paidAmount: 0,
+          remainingAmount: t.rentAmount || 3000,
+          status: "unpaid",
+        });
+      }
+    }
+
+    return Response.json({ success: true, message: `${month} payments generate ho gayi ✅` });
+  } catch (err) {
+    return Response.json({ success: false, message: "Server error ❌" }, { status: 500 });
   }
 }
