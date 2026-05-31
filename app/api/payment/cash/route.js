@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import connectDB from '@/lib/db'
+import connectDB from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import { requireAuth } from '@/lib/auth'
 
