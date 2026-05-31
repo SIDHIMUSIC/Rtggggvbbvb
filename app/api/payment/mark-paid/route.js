@@ -5,40 +5,40 @@ import jwt from "jsonwebtoken";
 export async function POST(req) {
   await connectDB();
 
-  // 🔐 JWT CHECK
-  const token = req.headers.get("authorization");
-
-  if (!token) {
-    return Response.json({
-      success: false,
-      message: "No token ❌",
-    });
+  // ✅ FIXED: Bearer prefix strip karo verify se pehle
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader) {
+    return Response.json({ success: false, message: "No token ❌" });
   }
 
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : authHeader;
+
   try {
-    jwt.verify(token, process.env.JWT_SECRET); // ✅ FIXED
+    jwt.verify(token, process.env.JWT_SECRET);
   } catch {
-    return Response.json({
-      success: false,
-      message: "Invalid token ❌",
-    });
+    return Response.json({ success: false, message: "Invalid token ❌" });
   }
 
   const body = await req.json();
 
+  if (!body.id) {
+    return Response.json({ success: false, message: "Payment ID missing ❌" });
+  }
+
   const payment = await Payment.findById(body.id);
 
   if (!payment) {
-    return Response.json({
-      success: false,
-      message: "Payment not found ❌",
-    });
+    return Response.json({ success: false, message: "Payment not found ❌" });
   }
 
-  // ✅ MARK AS PAID
+  // ✅ Mark as fully paid
   payment.paidAmount = payment.totalRent;
   payment.remainingAmount = 0;
   payment.status = "paid";
+  payment.paidBy = "cash";
+  payment.paidAt = new Date();
 
   await payment.save();
 
