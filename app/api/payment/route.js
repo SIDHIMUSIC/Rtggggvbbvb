@@ -7,9 +7,7 @@ import jwt from "jsonwebtoken";
 function verifyToken(req) {
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return null;
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : authHeader;
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
   try {
     return jwt.verify(token, process.env.JWT_SECRET);
   } catch {
@@ -39,7 +37,7 @@ export async function GET() {
   }
 }
 
-// ─── POST — Cash payment ya new record ───────────────────────────────────────
+// ─── POST ─────────────────────────────────────────────────────────────────────
 export async function POST(req) {
   try {
     await connectDB();
@@ -48,7 +46,7 @@ export async function POST(req) {
 
     const body = await req.json();
 
-    // ── Case A: tenant + month + paidAmount (tenants page se) ────────────────
+    // ── Case A: tenant + month (tenants page se) ──────────────────────────
     if (body.tenant && body.month && !body.paymentId) {
       const tenantDoc = await Tenant.findById(body.tenant);
       if (!tenantDoc)
@@ -58,22 +56,14 @@ export async function POST(req) {
       if (!paid || paid <= 0)
         return Response.json({ success: false, message: "Invalid amount ❌" });
 
-      // ✅ FIX: Month parse karo — "Jun 2025" format handle karo
       let parsedDate = new Date(body.month + " 1");
-      
-      // Agar invalid date hai toh current month use karo
-      if (isNaN(parsedDate.getTime())) {
-        parsedDate = new Date();
-      }
-      
+      if (isNaN(parsedDate.getTime())) parsedDate = new Date();
+
       const mi = parsedDate.getFullYear() * 100 + (parsedDate.getMonth() + 1);
-      const ml = monthLabel(parsedDate); // "Jun 2025"
+      const ml = monthLabel(parsedDate);
 
-      // Existing payment dhundo
       let payment = await Payment.findOne({ tenant: body.tenant, monthIndex: mi });
-
       if (!payment) {
-        // ✅ FIX: Naya payment create karo
         payment = await Payment.create({
           tenant: body.tenant,
           roomNumber: tenantDoc.roomNumber,
@@ -86,40 +76,18 @@ export async function POST(req) {
         });
       }
 
-      const extra = await applyPayment(payment, paid, "cash", null);
+      await applyPayment(payment, paid, "cash", null);
 
-      // Extra amount agle mahine mein apply karo
-      if (extra > 0) {
-        const futurePayments = await Payment.find({
-          tenant: body.tenant,
-          status: { $in: ["unpaid", "partial"] },
-          monthIndex: { $gt: mi },
-        }).sort({ monthIndex: 1 });
+      // ✅ Updated payments return karo
+      const allPayments = await Payment.find({ tenant: body.tenant })
+        .populate("tenant", "name phone roomNumber rentAmount startDate")
+        .sort({ monthIndex: 1 })
+        .lean();
 
-        let rem = extra;
-        for (const fp of futurePayments) {
-          if (rem <= 0) break;
-          if (rem >= fp.remainingAmount) {
-            rem -= fp.remainingAmount;
-            fp.paidAmount = fp.totalRent;
-            fp.remainingAmount = 0;
-            fp.status = "paid";
-            fp.paidBy = "cash";
-            fp.paidAt = new Date();
-          } else {
-            fp.paidAmount += rem;
-            fp.remainingAmount -= rem;
-            fp.status = "partial";
-            rem = 0;
-          }
-          await fp.save();
-        }
-      }
-
-      return Response.json({ success: true });
+      return Response.json({ success: true, payments: allPayments });
     }
 
-    // ── Case B: paymentId se seedha (payments page se) ────────────────────
+    // ── Case B: paymentId se (Dashboard se) ──────────────────────────────
     if (body.paymentId) {
       const { paymentId, amount, method, razorpayPaymentId } = body;
       const paid = Number(amount);
@@ -132,6 +100,7 @@ export async function POST(req) {
 
       const extra = await applyPayment(payment, paid, method || "cash", razorpayPaymentId);
 
+      // Extra amount agle mahine mein apply karo
       if (extra > 0) {
         const futurePayments = await Payment.find({
           tenant: payment.tenant,
@@ -159,10 +128,16 @@ export async function POST(req) {
         }
       }
 
-      return Response.json({ success: true });
+      // ✅ FIX: Saari payments return karo — Dashboard UI update hogi
+      const allPayments = await Payment.find({ tenant: payment.tenant })
+        .populate("tenant", "name phone roomNumber rentAmount startDate")
+        .sort({ monthIndex: 1 })
+        .lean();
+
+      return Response.json({ success: true, payments: allPayments });
     }
 
-    return Response.json({ success: false, message: "Invalid request body ❌" });
+    return Response.json({ success: false, message: "Invalid request ❌" });
 
   } catch (err) {
     console.error("Payment POST error:", err);
@@ -170,7 +145,7 @@ export async function POST(req) {
   }
 }
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
+// ─── Helper ──────────────────────────────────────────────────────────────────
 async function applyPayment(payment, paid, method, razorpayPaymentId) {
   let extra = 0;
   if (paid >= payment.remainingAmount) {
@@ -190,7 +165,7 @@ async function applyPayment(payment, paid, method, razorpayPaymentId) {
   return extra;
 }
 
-// ─── PUT — Start date se aaj tak months generate karo ────────────────────────
+// ─── PUT — Months generate karo ──────────────────────────────────────────────
 export async function PUT(req) {
   try {
     await connectDB();
@@ -202,7 +177,6 @@ export async function PUT(req) {
     if (!tenant)
       return Response.json({ success: false, message: "Tenant not found ❌" });
 
-    // ✅ FIX: startDate validate karo — 1970 wala reject karo
     const rawDate = tenant.startDate ? new Date(tenant.startDate) : null;
     const isValidDate = rawDate && rawDate.getFullYear() > 2000;
     const start = isValidDate ? new Date(rawDate) : new Date();
