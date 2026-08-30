@@ -1,2 +1,13 @@
-node_modules/
+node_modules
+.vercel
+artifacts
+screenshots
+.tanstack
+*.log
+.DS_Store
+.node_modules.lock
+.grok/preview.log
+.grok/status
 .env
+.env.local
+.env*.local
