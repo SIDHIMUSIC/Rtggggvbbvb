@@ -1,6 +1,7 @@
 export type RoomStatus = "vacant" | "occupied";
 export type PaymentStatus = "unpaid" | "partial" | "paid";
 export type PayMethod = "cash" | "upi" | "card" | "dummy";
+export type ClaimStatus = "pending" | "confirmed" | "rejected";
 
 export const PAY_METHODS: PayMethod[] = ["upi", "cash", "card", "dummy"];
 
@@ -64,6 +65,21 @@ export type PaymentEvent = {
   tenantName?: string;
 };
 
+export type PayClaim = {
+  id: number;
+  tenantId: number;
+  paymentId: number;
+  amount: number;
+  method: PayMethod;
+  reference: string;
+  status: ClaimStatus;
+  createdAt: string;
+  decidedAt: string | null;
+  tenantName?: string;
+  roomNumber?: string;
+  month?: string;
+};
+
 export type TenantWithLedger = Tenant & {
   payments: Payment[];
   events: PaymentEvent[];
@@ -114,11 +130,11 @@ export type PayPortal = {
   };
   due: Payment[];
   events: PaymentEvent[];
+  claims: PayClaim[];
   totalDue: number;
 };
 
 export type PayConfirm = {
-  payment: Payment;
-  event: PaymentEvent;
+  claim: PayClaim;
   portal: PayPortal;
 };
