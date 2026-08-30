@@ -50,11 +50,14 @@ async function postEmailAuth(
 
 function mapAuthError(raw: string, mode: "in" | "up"): string {
   const m = raw.toLowerCase();
+  if (m.includes("origin")) {
+    return "This Vercel link cannot save owner accounts yet. Use the Grok preview, or attach a database on the project.";
+  }
+  if (m.includes("database") || m.includes("pglite") || m.includes("serverless")) {
+    return "This live site has no database, so accounts cannot be saved. Use the Grok preview to sign in.";
+  }
   if (m.includes("already") || m.includes("exists") || m.includes("registered")) {
     return "An account with this email already exists. Sign in instead.";
-  }
-  if (m.includes("invalid") || m.includes("credential") || m.includes("incorrect")) {
-    return "Email or password is incorrect.";
   }
   if (m.includes("8") && m.includes("password")) {
     return "Password must be at least 8 characters.";
@@ -62,8 +65,10 @@ function mapAuthError(raw: string, mode: "in" | "up"): string {
   if (m.includes("disabled")) {
     return "Sign-in is currently disabled.";
   }
-  if (m.includes("origin")) {
-    return "Could not reach the sign-in server. Refresh and try again.";
+  if (m.includes("invalid") || m.includes("credential") || m.includes("incorrect")) {
+    return mode === "up"
+      ? "Could not create the owner account. Try a different email."
+      : "Email or password is incorrect.";
   }
   return raw || (mode === "up" ? "Could not create the owner account." : "Could not sign in.");
 }
