@@ -3,9 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Checkout } from "@/components/payments/checkout";
-import { ReceiptDialog } from "@/components/payments/receipt-dialog";
 import { Badge } from "@/components/ui/badge";
-import { inr } from "@/lib/rent/months";
+import { formatDateTimeIN, inr, methodLabel } from "@/lib/rent/months";
 import { confirmTenantPay, getPayPortal } from "@/lib/rent/portal-server";
 import type { PayConfirm, Payment } from "@/lib/rent/types";
 import { errMsg } from "@/lib/utils";
@@ -21,18 +20,19 @@ function TenantPayPage() {
     queryFn: () => getPayPortal({ data: { token } }),
   });
   const [target, setTarget] = useState<Payment | null>(null);
-  const [done, setDone] = useState<PayConfirm | null>(null);
 
   const firstDue = useMemo(() => {
     const due = portal.data?.due ?? [];
     return due.slice().sort((a, b) => a.monthIndex - b.monthIndex)[0] ?? null;
   }, [portal.data]);
 
+  const pending = (portal.data?.claims ?? []).filter((c) => c.status === "pending");
+
   const payMut = useMutation({
     mutationFn: (input: {
       paymentId: number;
       amount: number;
-      method: PayConfirm["event"]["method"];
+      method: PayConfirm["claim"]["method"];
       reference: string;
     }) =>
       confirmTenantPay({
@@ -44,10 +44,8 @@ function TenantPayPage() {
           reference: input.reference,
         },
       }),
-    onSuccess: (res) => {
-      setDone(res);
-      setTarget(null);
-      toast.success("Payment successful");
+    onSuccess: () => {
+      toast.success("Owner notified. Bill stays unpaid until they confirm.");
       void portal.refetch();
     },
     onError: (e) => toast.error(errMsg(e)),
@@ -74,6 +72,9 @@ function TenantPayPage() {
 
   const data = portal.data;
   const paying = target ?? firstDue;
+  const waitingOnPaying = paying
+    ? pending.some((c) => c.paymentId === paying.id)
+    : pending.length > 0;
 
   return (
     <div className="min-h-dvh bg-[#0b1220] px-4 py-8 text-white">
@@ -85,19 +86,40 @@ function TenantPayPage() {
         <p className="mt-2 text-sm text-white/70">
           {data.tenant.name} · Room {data.tenant.roomNumber}
         </p>
+
         <div className="mt-5 grid grid-cols-2 gap-2">
           <div className="rounded-2xl bg-white/8 px-4 py-3">
             <p className="text-[11px] text-white/50 uppercase">Due</p>
             <p className="mt-1 text-xl tabular">{inr(data.totalDue)}</p>
           </div>
           <div className="rounded-2xl bg-white/8 px-4 py-3">
-            <p className="text-[11px] text-white/50 uppercase">Bills open</p>
-            <p className="mt-1 text-xl tabular">{data.due.length}</p>
+            <p className="text-[11px] text-white/50 uppercase">Waiting owner</p>
+            <p className="mt-1 text-xl tabular">{pending.length}</p>
           </div>
         </div>
+
+        {pending.length > 0 ? (
+          <ul className="mt-5 space-y-2">
+            {pending.map((c) => (
+              <li key={c.id} className="rounded-2xl bg-amber-400/15 px-4 py-3 text-sm">
+                <p className="font-medium">Reported {inr(c.amount)} · {c.month}</p>
+                <p className="mt-1 text-xs text-white/70">
+                  {methodLabel(c.method)}
+                  {c.reference ? ` · ${c.reference}` : ""} · {formatDateTimeIN(c.createdAt)}
+                </p>
+                <p className="mt-1 text-xs text-amber-200">Waiting for owner to confirm payment</p>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
         {data.totalDue <= 0 ? (
           <p className="mt-8 rounded-2xl bg-emerald-500/15 px-4 py-6 text-center text-sm text-emerald-200">
             Nothing due. You are clear.
+          </p>
+        ) : waitingOnPaying ? (
+          <p className="mt-6 rounded-2xl bg-white/8 px-4 py-4 text-center text-sm text-white/70">
+            This bill is already with the owner. Receipt comes after they tap Confirm payment.
           </p>
         ) : paying ? (
           <div className="mt-6">
@@ -117,6 +139,7 @@ function TenantPayPage() {
             />
           </div>
         ) : null}
+
         {data.due.length > 1 ? (
           <ul className="mt-6 space-y-2">
             {data.due.map((p) => (
@@ -130,20 +153,15 @@ function TenantPayPage() {
                     <span className="block text-sm">{p.month}</span>
                     <span className="text-xs text-white/50">{inr(p.remainingAmount)} due</span>
                   </span>
-                  <Badge variant={p.status}>{p.status}</Badge>
+                  <Badge variant={pending.some((c) => c.paymentId === p.id) ? "pending" : p.status}>
+                    {pending.some((c) => c.paymentId === p.id) ? "waiting" : p.status}
+                  </Badge>
                 </button>
               </li>
             ))}
           </ul>
         ) : null}
       </div>
-      <ReceiptDialog
-        payment={done?.payment ?? null}
-        event={done?.event}
-        building={data.building}
-        open={Boolean(done)}
-        onOpenChange={(o) => !o && setDone(null)}
-      />
     </div>
   );
 }
