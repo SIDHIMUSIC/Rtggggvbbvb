@@ -24,7 +24,15 @@ export const Route = createFileRoute("/")({ component: Home });
 function Home() {
   const { sessionUser } = useRouteContext({ from: "__root__" });
   const { user, isPending } = useCurrentUserState();
-  const authed = Boolean(user ?? (isPending ? sessionUser : null));
+  const authed = Boolean(user ?? sessionUser);
+
+  if (isPending && !authed) {
+    return (
+      <AppShell>
+        <DashboardSkeleton />
+      </AppShell>
+    );
+  }
 
   if (!authed) {
     return (

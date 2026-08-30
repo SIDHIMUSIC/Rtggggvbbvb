@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Navigate, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { Building2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
@@ -21,14 +21,31 @@ function stashToken(token: string | null | undefined) {
   }
 }
 
-function stashAuthToken(response: Response) {
-  stashToken(response.headers.get("set-auth-token"));
-}
-
-function stashSessionBody(data: unknown) {
-  if (!data || typeof data !== "object") return;
-  const session = (data as { session?: { token?: string } }).session;
-  stashToken(session?.token);
+async function postEmailAuth(
+  path: "/sign-in/email" | "/sign-up/email",
+  body: Record<string, string>,
+) {
+  const res = await fetch(`/api/auth${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    message?: string;
+    error?: { message?: string };
+    user?: { id?: string };
+    token?: string;
+    session?: { token?: string };
+  };
+  stashToken(res.headers.get("set-auth-token") || json.token || json.session?.token);
+  if (!res.ok) {
+    throw new Error(json.error?.message || json.message || `HTTP ${res.status}`);
+  }
+  if (!json.user && !json.token && !json.session?.token) {
+    throw new Error("Sign-in did not return a session.");
+  }
+  return json;
 }
 
 function mapAuthError(raw: string, mode: "in" | "up"): string {
@@ -48,16 +65,11 @@ function mapAuthError(raw: string, mode: "in" | "up"): string {
   if (m.includes("origin")) {
     return "Could not reach the sign-in server. Refresh and try again.";
   }
-  if (m.includes("session did not stick") || m.includes("did not stick")) {
-    return "Could not keep you signed in. Refresh and try again.";
-  }
   return raw || (mode === "up" ? "Could not create the owner account." : "Could not sign in.");
 }
 
 function Login() {
   const { user, isPending } = useCurrentUserState();
-  const navigate = useNavigate();
-  const router = useRouter();
   const [mode, setMode] = useState<"in" | "up">("in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -80,30 +92,20 @@ function Login() {
   async function finishAuth() {
     const session = await authClient.getSession();
     if (!session.data?.user) {
-      throw new Error("Could not keep you signed in. Refresh and try again.");
+      throw new Error("Could not start session. Try again.");
     }
-    await router.invalidate();
-    await navigate({ to: "/" });
+    window.location.assign("/");
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setBusy(true);
-    const fetchOptions = {
-      onSuccess: (ctx: { response: Response }) => {
-        stashAuthToken(ctx.response);
-      },
-    };
     try {
       if (mode === "up") {
-        const res = await authClient.signUp.email({ email, password, name }, fetchOptions);
-        if (res.error) throw new Error(mapAuthError(res.error.message || "", "up"));
-        stashSessionBody(res.data);
+        await postEmailAuth("/sign-up/email", { email, password, name });
       } else {
-        const res = await authClient.signIn.email({ email, password }, fetchOptions);
-        if (res.error) throw new Error(mapAuthError(res.error.message || "", "in"));
-        stashSessionBody(res.data);
+        await postEmailAuth("/sign-in/email", { email, password });
       }
       await finishAuth();
     } catch (err) {
