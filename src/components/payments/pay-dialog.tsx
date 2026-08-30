@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Banknote, Copy, Smartphone } from "lucide-react";
+import { Banknote, Copy, CreditCard, FlaskConical, Smartphone } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,18 @@ import { upiPayUrl } from "@/lib/rent/upi";
 import type { Building, PayMethod, Payment } from "@/lib/rent/types";
 import { cn } from "@/lib/utils";
 import { UpiQr } from "./upi-qr";
+
+const methods: Array<{ id: PayMethod; label: string; icon: typeof Smartphone }> = [
+  { id: "upi", label: "UPI", icon: Smartphone },
+  { id: "cash", label: "Cash", icon: Banknote },
+  { id: "card", label: "Card", icon: CreditCard },
+  { id: "dummy", label: "Dummy", icon: FlaskConical },
+];
+
+function last4(card: string): string {
+  const digits = card.replace(/\D/g, "");
+  return digits.slice(-4);
+}
 
 export function PayDialog({
   payment,
@@ -37,6 +49,9 @@ export function PayDialog({
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PayMethod>("upi");
   const [reference, setReference] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
   const remaining = payment?.remainingAmount ?? 0;
   const payAmount = Number(amount || remaining) || remaining;
   const upiId = building?.upiId ?? "";
@@ -56,12 +71,27 @@ export function PayDialog({
     setAmount("");
     setReference("");
     setMethod("upi");
+    setCardNumber("");
+    setCardName("");
+    setCardExpiry("");
   }
 
   function submit() {
     const n = Number(amount || remaining);
     if (!Number.isFinite(n) || n <= 0) {
       toast.error("Enter a valid amount");
+      return;
+    }
+    if (method === "card") {
+      const digits = cardNumber.replace(/\D/g, "");
+      if (digits.length < 12) {
+        toast.error("Enter the card number (last 4 is stored, never the full PAN)");
+        return;
+      }
+      const tag = `**** ${last4(digits)}${cardName ? ` · ${cardName.trim()}` : ""}${
+        reference.trim() ? ` · ${reference.trim()}` : ""
+      }`;
+      onPay(n, "card", tag.slice(0, 64));
       return;
     }
     onPay(n, method, reference.trim() || undefined);
@@ -95,33 +125,27 @@ export function PayDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setMethod("upi")}
-                className={cn(
-                  "flex h-11 items-center justify-center gap-2 rounded-[10px] border text-sm font-medium",
-                  method === "upi"
-                    ? "border-primary bg-primary text-primary-fg"
-                    : "border-border bg-surface-2 text-fg",
-                )}
-              >
-                <Smartphone className="size-4" />
-                UPI
-              </button>
-              <button
-                type="button"
-                onClick={() => setMethod("cash")}
-                className={cn(
-                  "flex h-11 items-center justify-center gap-2 rounded-[10px] border text-sm font-medium",
-                  method === "cash"
-                    ? "border-primary bg-primary text-primary-fg"
-                    : "border-border bg-surface-2 text-fg",
-                )}
-              >
-                <Banknote className="size-4" />
-                Cash
-              </button>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {methods.map((m) => {
+                const Icon = m.icon;
+                const on = method === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setMethod(m.id)}
+                    className={cn(
+                      "flex h-11 items-center justify-center gap-1.5 rounded-[10px] border text-sm font-medium",
+                      on
+                        ? "border-primary bg-primary text-primary-fg"
+                        : "border-border bg-surface-2 text-fg",
+                    )}
+                  >
+                    <Icon className="size-4" />
+                    {m.label}
+                  </button>
+                );
+              })}
             </div>
 
             <div>
@@ -179,7 +203,7 @@ export function PayDialog({
                     id="upi-ref"
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
-                    placeholder="Optional — from the bank SMS"
+                    placeholder="From the bank SMS"
                     autoCapitalize="characters"
                   />
                 </div>
@@ -198,10 +222,70 @@ export function PayDialog({
               </div>
             )}
 
+            {method === "card" && (
+              <div className="space-y-3 rounded-2xl border border-border bg-bg p-4">
+                <p className="text-xs leading-relaxed text-muted">
+                  Record a card swipe or POS settlement. Only the last four digits
+                  are stored — never the full card number.
+                </p>
+                <div>
+                  <Label htmlFor="card-name">Name on card</Label>
+                  <Input
+                    id="card-name"
+                    value={cardName}
+                    onChange={(e) => setCardName(e.target.value)}
+                    placeholder="As printed"
+                    autoComplete="cc-name"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="card-number">Card number</Label>
+                  <Input
+                    id="card-number"
+                    inputMode="numeric"
+                    autoComplete="cc-number"
+                    value={cardNumber}
+                    onChange={(e) => setCardNumber(e.target.value)}
+                    placeholder="XXXX XXXX XXXX 4242"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="card-exp">Expiry</Label>
+                    <Input
+                      id="card-exp"
+                      value={cardExpiry}
+                      onChange={(e) => setCardExpiry(e.target.value)}
+                      placeholder="MM/YY"
+                      autoComplete="cc-exp"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="card-auth">Auth / approval</Label>
+                    <Input
+                      id="card-auth"
+                      value={reference}
+                      onChange={(e) => setReference(e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {method === "dummy" && (
+              <p className="rounded-2xl border border-border bg-bg px-4 py-3 text-sm leading-relaxed text-muted">
+                Dummy books the amount as received with no money moving — use it
+                to test the ledger, bills, and receipts.
+              </p>
+            )}
+
             <Button type="button" className="w-full" disabled={busy} onClick={submit}>
               {busy
                 ? "Recording…"
-                : `Mark ${inr(payAmount || remaining)} received`}
+                : method === "dummy"
+                  ? `Record dummy ${inr(payAmount || remaining)}`
+                  : `Mark ${inr(payAmount || remaining)} received`}
             </Button>
           </div>
         )}

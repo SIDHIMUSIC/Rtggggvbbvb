@@ -1,5 +1,5 @@
 import { Link, useRouterState, useRouteContext } from "@tanstack/react-router";
-import { Building2, Settings, Users, Wallet } from "lucide-react";
+import { Building2, Receipt, Settings, Users, Wallet } from "lucide-react";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { UserChip } from "@/components/auth/user-chip";
 import { cn } from "@/lib/utils";
@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 const links = [
   { to: "/", label: "Board", icon: Building2 },
   { to: "/tenants", label: "Tenants", icon: Users },
-  { to: "/payments", label: "Ledger", icon: Wallet },
+  { to: "/payments", label: "Hisab", icon: Wallet },
+  { to: "/bills", label: "Bills", icon: Receipt },
 ] as const;
 
 export function Nav() {
@@ -84,7 +85,7 @@ export function MobileNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
-      <div className="grid grid-cols-3">
+      <div className="grid grid-cols-4">
         {links.map((l) => {
           const active = l.to === "/" ? pathname === "/" : pathname.startsWith(l.to);
           const Icon = l.icon;
@@ -93,7 +94,7 @@ export function MobileNav() {
               key={l.to}
               to={l.to}
               className={cn(
-                "flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
+                "flex min-h-11 flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
                 active ? "text-fg" : "text-muted",
               )}
             >

@@ -4,8 +4,10 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import type {
   Building,
   Dashboard,
+  MonthPoint,
   PayMethod,
   Payment,
+  PaymentEvent,
   PaymentStatus,
   Room,
   RoomDetail,
@@ -13,6 +15,7 @@ import type {
   Tenant,
   TenantWithLedger,
 } from "./types";
+import { PAY_METHODS } from "./types";
 import {
   currentMonthIndex,
   monthIndex,
@@ -58,8 +61,22 @@ type PaymentRow = {
   paid_by: string;
   paid_at: string | Date | null;
   transaction_id: string;
+  extra_amount?: number;
+  extra_note?: string;
   tenant_name?: string;
   tenant_phone?: string;
+};
+
+type EventRow = {
+  id: number;
+  tenant_id: number;
+  payment_id: number;
+  amount: number;
+  method: string;
+  reference: string;
+  created_at: string | Date;
+  month?: string;
+  tenant_name?: string;
 };
 
 function mapRoom(r: RoomRow): Room {
@@ -101,8 +118,25 @@ function mapPayment(p: PaymentRow): Payment {
     paidBy: p.paid_by ?? "",
     paidAt: p.paid_at ? new Date(p.paid_at).toISOString() : null,
     transactionId: p.transaction_id ?? "",
+    extraAmount: Number(p.extra_amount ?? 0),
+    extraNote: p.extra_note ?? "",
     tenantName: p.tenant_name,
     tenantPhone: p.tenant_phone,
+  };
+}
+
+function mapEvent(e: EventRow): PaymentEvent {
+  const method = PAY_METHODS.includes(e.method as PayMethod) ? (e.method as PayMethod) : "cash";
+  return {
+    id: e.id,
+    tenantId: e.tenant_id,
+    paymentId: e.payment_id,
+    amount: Number(e.amount),
+    method,
+    reference: e.reference ?? "",
+    createdAt: new Date(e.created_at).toISOString(),
+    month: e.month,
+    tenantName: e.tenant_name,
   };
 }
 
@@ -186,6 +220,7 @@ async function loadPayments(userId: string, tenantId?: number): Promise<Payment[
         select p.id, p.tenant_id, p.room_number, p.month, p.month_index,
                p.total_rent, p.paid_amount, p.remaining_amount, p.status,
                p.paid_by, p.paid_at, p.transaction_id,
+               p.extra_amount, p.extra_note,
                t.name as tenant_name, t.phone as tenant_phone
         from payments p
         join tenants t on t.id = p.tenant_id
@@ -196,6 +231,7 @@ async function loadPayments(userId: string, tenantId?: number): Promise<Payment[
         select p.id, p.tenant_id, p.room_number, p.month, p.month_index,
                p.total_rent, p.paid_amount, p.remaining_amount, p.status,
                p.paid_by, p.paid_at, p.transaction_id,
+               p.extra_amount, p.extra_note,
                t.name as tenant_name, t.phone as tenant_phone
         from payments p
         join tenants t on t.id = p.tenant_id
@@ -205,12 +241,41 @@ async function loadPayments(userId: string, tenantId?: number): Promise<Payment[
   return rows.map(mapPayment);
 }
 
+async function loadEvents(userId: string, tenantId?: number): Promise<PaymentEvent[]> {
+  const sql = await getSql();
+  const rows = tenantId
+    ? await sql<EventRow>`
+        select e.id, e.tenant_id, e.payment_id, e.amount, e.method, e.reference, e.created_at,
+               p.month, t.name as tenant_name
+        from payment_events e
+        join payments p on p.id = e.payment_id
+        join tenants t on t.id = e.tenant_id
+        where e.user_id = ${userId} and e.tenant_id = ${tenantId}
+        order by e.created_at desc
+      `
+    : await sql<EventRow>`
+        select e.id, e.tenant_id, e.payment_id, e.amount, e.method, e.reference, e.created_at,
+               p.month, t.name as tenant_name
+        from payment_events e
+        join payments p on p.id = e.payment_id
+        join tenants t on t.id = e.tenant_id
+        where e.user_id = ${userId}
+        order by e.created_at desc
+        limit 80
+      `;
+  return rows.map(mapEvent);
+}
+
 async function withLedger(userId: string, tenant: TenantRow): Promise<TenantWithLedger> {
   await ensureMonths(userId, tenant);
-  const payments = await loadPayments(userId, tenant.id);
+  const [payments, events] = await Promise.all([
+    loadPayments(userId, tenant.id),
+    loadEvents(userId, tenant.id),
+  ]);
   return {
     ...mapTenant(tenant),
     payments,
+    events,
     totalPaid: payments.reduce((s, p) => s + p.paidAmount, 0),
     totalDue: payments.reduce((s, p) => s + p.remainingAmount, 0),
   };
@@ -219,10 +284,11 @@ async function withLedger(userId: string, tenant: TenantRow): Promise<TenantWith
 async function loadDashboard(userId: string): Promise<Dashboard> {
   const tenants = await loadTenants(userId);
   for (const t of tenants) await ensureMonths(userId, t);
-  const [rooms, payments, building] = await Promise.all([
+  const [rooms, payments, building, events] = await Promise.all([
     loadRooms(userId),
     loadPayments(userId),
     loadBuilding(userId),
+    loadEvents(userId),
   ]);
   const income = payments.reduce((s, p) => s + p.paidAmount, 0);
   const pending = payments.reduce((s, p) => s + p.remainingAmount, 0);
@@ -231,11 +297,26 @@ async function loadDashboard(userId: string): Promise<Dashboard> {
     .filter((p) => p.remainingAmount > 0 && p.monthIndex < nowIdx)
     .reduce((s, p) => s + p.remainingAmount, 0);
   const occupied = rooms.filter((r) => r.status === "occupied").length;
+  const monthMap = new Map<number, MonthPoint>();
+  for (const p of payments) {
+    const cur = monthMap.get(p.monthIndex) ?? {
+      month: p.month,
+      monthIndex: p.monthIndex,
+      collected: 0,
+      due: 0,
+    };
+    cur.collected += p.paidAmount;
+    cur.due += p.remainingAmount;
+    monthMap.set(p.monthIndex, cur);
+  }
+  const months = [...monthMap.values()].sort((a, b) => a.monthIndex - b.monthIndex).slice(-8);
   return {
     building,
     rooms,
     tenants: tenants.map(mapTenant),
     payments,
+    events,
+    months,
     stats: {
       totalRooms: rooms.length,
       occupied,
@@ -724,6 +805,11 @@ async function applyAmount(
     remainingToApply -= take;
   }
 
+  await sql`
+    insert into payment_events (user_id, tenant_id, payment_id, amount, method, reference)
+    values (${userId}, ${payment.tenant_id}, ${payment.id}, ${amount}, ${method}, ${tid})
+  `;
+
   return loadPayments(userId, payment.tenant_id);
 }
 
@@ -732,7 +818,7 @@ export const applyPayment = createServerFn({ method: "POST" })
   .validator((input: { paymentId: number; amount: number; method: PayMethod; reference?: string }) => {
     const paymentId = Number(input.paymentId);
     const amount = Math.round(Number(input.amount));
-    const method = input.method === "upi" ? "upi" : "cash";
+    const method = PAY_METHODS.includes(input.method) ? input.method : "cash";
     const reference = String(input.reference ?? "").trim().slice(0, 64);
     if (!paymentId) throw new Error("Payment is required");
     if (!Number.isFinite(amount) || amount <= 0) throw new Error("Amount must be positive");
@@ -756,6 +842,7 @@ export const resetPayment = createServerFn({ method: "POST" })
       where id = ${data.id} and user_id = ${context.userId}
     `;
     if (!rows[0]) throw new Error("Payment not found");
+    await sql`delete from payment_events where payment_id = ${data.id} and user_id = ${context.userId}`;
     await sql`
       update payments set
         paid_amount = 0,
@@ -794,5 +881,44 @@ export const getRoomDetail = createServerFn({ method: "GET" })
     `;
     const tenant = tenants[0] ? await withLedger(context.userId, tenants[0]) : null;
     return { room, tenant };
+  });
+
+export const addCharge = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { paymentId: number; amount: number; note?: string }) => {
+    const paymentId = Number(input.paymentId);
+    const amount = Math.round(Number(input.amount));
+    const note = String(input.note ?? "").trim().slice(0, 80);
+    if (!paymentId) throw new Error("Bill is required");
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Charge must be a positive amount");
+    return { paymentId, amount, note };
+  })
+  .handler(async ({ context, data }): Promise<Payment[]> => {
+    const sql = await getSql();
+    const rows = await sql<PaymentRow>`
+      select id, tenant_id, room_number, month, month_index, total_rent,
+             paid_amount, remaining_amount, status, paid_by, paid_at, transaction_id,
+             extra_amount, extra_note
+      from payments
+      where id = ${data.paymentId} and user_id = ${context.userId}
+    `;
+    if (!rows[0]) throw new Error("Bill not found");
+    const extraAmount = Number(rows[0].extra_amount ?? 0) + data.amount;
+    const extraNote = [rows[0].extra_note, data.note].filter(Boolean).join(" · ").slice(0, 160);
+    const totalRent = Number(rows[0].total_rent) + data.amount;
+    const remaining = Number(rows[0].remaining_amount) + data.amount;
+    const paidAmount = Number(rows[0].paid_amount);
+    const status: PaymentStatus =
+      remaining <= 0 ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
+    await sql`
+      update payments set
+        extra_amount = ${extraAmount},
+        extra_note = ${extraNote},
+        total_rent = ${totalRent},
+        remaining_amount = ${remaining},
+        status = ${status}
+      where id = ${data.paymentId} and user_id = ${context.userId}
+    `;
+    return loadPayments(context.userId, rows[0].tenant_id);
   });
 

@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Printer, Trash2, Wallet } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
+import { ChargeDialog } from "@/components/payments/charge-dialog";
 import { PayDialog } from "@/components/payments/pay-dialog";
+import { BillDialog } from "@/components/payments/bill-dialog";
+import { ReceiptDialog } from "@/components/payments/receipt-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -15,9 +18,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { formatDateIN, inr, monthLabel } from "@/lib/rent/months";
+import { formatDateIN, formatDateTimeIN, inr, methodLabel, monthLabel } from "@/lib/rent/months";
 import { rentKeys } from "@/lib/rent/queries";
 import {
+  addCharge,
   addTenant,
   applyPayment,
   deleteTenant,
@@ -82,6 +86,9 @@ function TenantsView() {
   const [editing, setEditing] = useState<Tenant | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [pay, setPay] = useState<Payment | null>(null);
+  const [bill, setBill] = useState<Payment | null>(null);
+  const [receipt, setReceipt] = useState<Payment | null>(null);
+  const [charge, setCharge] = useState<Payment | null>(null);
 
   const vacantRooms = useMemo(
     () => (dash.data?.rooms ?? []).filter((r) => r.status === "vacant"),
@@ -130,11 +137,25 @@ function TenantsView() {
   const payMut = useMutation({
     mutationFn: ({ amount, method, reference }: { amount: number; method: PayMethod; reference?: string }) =>
       applyPayment({ data: { paymentId: pay!.id, amount, method, reference } }),
+    onSuccess: (rows) => {
+      void qc.invalidateQueries({ queryKey: rentKeys.dashboard });
+      if (id) void qc.invalidateQueries({ queryKey: rentKeys.tenant(id) });
+      const updated = pay ? rows.find((r) => r.id === pay.id) : undefined;
+      setPay(null);
+      toast.success("Payment recorded");
+      if (updated) setReceipt(updated);
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
+
+  const chargeMut = useMutation({
+    mutationFn: ({ amount, note }: { amount: number; note: string }) =>
+      addCharge({ data: { paymentId: charge!.id, amount, note } }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: rentKeys.dashboard });
       if (id) void qc.invalidateQueries({ queryKey: rentKeys.tenant(id) });
-      setPay(null);
-      toast.success("Payment recorded");
+      setCharge(null);
+      toast.success("Added to bill");
     },
     onError: (e) => toast.error(errMsg(e)),
   });
@@ -277,16 +298,49 @@ function TenantsView() {
                           </p>
                           <p className="text-xs tabular text-muted">
                             {inr(p.paidAmount)} paid · {inr(p.remainingAmount)} due
+                            {p.extraAmount > 0 ? ` · extra ${inr(p.extraAmount)}` : ""}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant={p.status}>{p.status}</Badge>
+                          <Button type="button" size="sm" variant="ghost" onClick={() => setBill(p)}>
+                            <Printer className="size-3.5" />
+                            Bill
+                          </Button>
+                          <Button type="button" size="sm" variant="secondary" onClick={() => setCharge(p)}>
+                            Extra
+                          </Button>
                           {p.status !== "paid" && (
                             <Button type="button" size="sm" onClick={() => setPay(p)}>
+                              <Wallet className="size-3.5" />
                               Collect
                             </Button>
                           )}
                         </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <h3 className="mt-8 mb-3 text-sm font-medium text-muted">Collections</h3>
+                <div className="space-y-2">
+                  {(detail.data.events ?? []).length === 0 ? (
+                    <p className="text-sm text-muted">No collections recorded yet.</p>
+                  ) : (
+                    detail.data.events.map((e) => (
+                      <div
+                        key={e.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-bg px-4 py-3"
+                      >
+                        <div>
+                          <p className="text-sm font-medium tabular">{inr(e.amount)}</p>
+                          <p className="text-xs text-muted">
+                            {methodLabel(e.method)}
+                            {e.month ? ` · ${e.month}` : ""}
+                            {e.reference ? ` · ${e.reference}` : ""}
+                          </p>
+                        </div>
+                        <p className="text-xs text-faint">{formatDateTimeIN(e.createdAt)}</p>
                       </div>
                     ))
                   )}
@@ -413,6 +467,25 @@ function TenantsView() {
         }}
         busy={payMut.isPending}
         onPay={(amount, method, reference) => payMut.mutate({ amount, method, reference })}
+      />
+      <BillDialog
+        payment={bill}
+        building={dash.data?.building}
+        open={Boolean(bill)}
+        onOpenChange={(o) => !o && setBill(null)}
+      />
+      <ReceiptDialog
+        payment={receipt}
+        building={dash.data?.building}
+        open={Boolean(receipt)}
+        onOpenChange={(o) => !o && setReceipt(null)}
+      />
+      <ChargeDialog
+        payment={charge}
+        open={Boolean(charge)}
+        onOpenChange={(o) => !o && setCharge(null)}
+        onAdd={(amount, note) => chargeMut.mutate({ amount, note })}
+        busy={chargeMut.isPending}
       />
     </div>
   );

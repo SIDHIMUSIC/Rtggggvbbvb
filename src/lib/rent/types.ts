@@ -1,6 +1,8 @@
 export type RoomStatus = "vacant" | "occupied";
 export type PaymentStatus = "unpaid" | "partial" | "paid";
-export type PayMethod = "cash" | "upi";
+export type PayMethod = "cash" | "upi" | "card" | "dummy";
+
+export const PAY_METHODS: PayMethod[] = ["upi", "cash", "card", "dummy"];
 
 export type Building = {
   name: string;
@@ -44,12 +46,27 @@ export type Payment = {
   paidBy: string;
   paidAt: string | null;
   transactionId: string;
+  extraAmount: number;
+  extraNote: string;
   tenantName?: string;
   tenantPhone?: string;
 };
 
+export type PaymentEvent = {
+  id: number;
+  tenantId: number;
+  paymentId: number;
+  amount: number;
+  method: PayMethod;
+  reference: string;
+  createdAt: string;
+  month?: string;
+  tenantName?: string;
+};
+
 export type TenantWithLedger = Tenant & {
   payments: Payment[];
+  events: PaymentEvent[];
   totalPaid: number;
   totalDue: number;
 };
@@ -64,11 +81,20 @@ export type DashboardStats = {
   tenantCount: number;
 };
 
+export type MonthPoint = {
+  month: string;
+  monthIndex: number;
+  collected: number;
+  due: number;
+};
+
 export type Dashboard = {
   building: Building;
   rooms: Room[];
   tenants: Tenant[];
   payments: Payment[];
+  events: PaymentEvent[];
+  months: MonthPoint[];
   stats: DashboardStats;
 };
 

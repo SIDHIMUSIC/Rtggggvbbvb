@@ -76,3 +76,16 @@
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+@media print {
+  header,
+  nav,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: black;
+  }
+}

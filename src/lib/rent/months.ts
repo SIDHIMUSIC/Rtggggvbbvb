@@ -60,6 +60,24 @@ export function roomSort(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+export function groupRoomsByFloor<T extends { roomNumber: string }>(
+  rooms: T[],
+): Array<{ floor: string; rooms: T[] }> {
+  const map = new Map<string, T[]>();
+  for (const room of rooms) {
+    const floor = floorOf(room.roomNumber);
+    const list = map.get(floor) ?? [];
+    list.push(room);
+    map.set(floor, list);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => floorSort(a, b))
+    .map(([floor, list]) => ({
+      floor,
+      rooms: list.slice().sort((a, b) => roomSort(a.roomNumber, b.roomNumber)),
+    }));
+}
+
 export function inr(n: number): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -79,7 +97,28 @@ export function formatDateIN(value: string | Date | null | undefined): string {
   });
 }
 
-export function toIsoDate(value: string | Date): string {
+export function formatDateTimeIN(value: string | Date | null | undefined): string {
+  if (!value) return "—";
+  const d = parseDate(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function methodLabel(method: string): string {
+  if (method === "upi") return "UPI";
+  if (method === "card") return "Card";
+  if (method === "dummy") return "Dummy";
+  if (method === "cash") return "Cash";
+  return method || "—";
+}
+
+export function toIsoDate(value: Date | string): string {
   const d = parseDate(value);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -88,23 +127,8 @@ export function toIsoDate(value: string | Date): string {
 }
 
 export function txId(): string {
-  return `RW-${Date.now().toString(36).toUpperCase()}`;
-}
-
-export function groupRoomsByFloor<T extends { roomNumber: string }>(
-  rooms: T[],
-): Array<{ floor: string; rooms: T[] }> {
-  const map = new Map<string, T[]>();
-  for (const room of rooms) {
-    const floor = floorOf(room.roomNumber);
-    const list = map.get(floor) ?? [];
-    list.push(room);
-    map.set(floor, list);
-  }
-  return [...map.entries()]
-    .sort((a, b) => floorSort(a[0], b[0]))
-    .map(([floor, list]) => ({
-      floor,
-      rooms: list.sort((a, b) => roomSort(a.roomNumber, b.roomNumber)),
-    }));
+  const n = Math.floor(Math.random() * 1e8)
+    .toString()
+    .padStart(8, "0");
+  return `RW-${n}`;
 }

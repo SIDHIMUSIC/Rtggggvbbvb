@@ -12,7 +12,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RedirectToSignIn } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { currentMonthIndex, inr, isOverdue } from "@/lib/rent/months";
+import { currentMonthIndex, inr, isOverdue, methodLabel } from "@/lib/rent/months";
 import { rentKeys } from "@/lib/rent/queries";
 import { applyPayment, getDashboard, resetPayment } from "@/lib/rent/server";
 import type { PayMethod, Payment } from "@/lib/rent/types";
@@ -97,7 +97,7 @@ function PaymentsView() {
     <div>
       <div className="mb-6">
         <p className="text-xs font-medium tracking-[0.18em] text-muted uppercase">Money</p>
-        <h1 className="mt-1 font-display text-3xl tracking-tight">Rent ledger</h1>
+        <h1 className="mt-1 font-display text-3xl tracking-tight">Hisab</h1>
       </div>
 
       {dash.isLoading ? (
@@ -194,7 +194,7 @@ function PaymentsView() {
                         </p>
                         <p className="text-xs tabular text-muted">
                           {inr(p.paidAmount)} / {inr(p.totalRent)}
-                          {p.paidBy ? ` · ${p.paidBy === "upi" ? "UPI" : "Cash"}` : ""}
+                          {p.paidBy ? ` · ${methodLabel(p.paidBy)}` : ""}
                           {p.transactionId ? ` · ${p.transactionId}` : ""}
                         </p>
                       </div>

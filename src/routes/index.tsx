@@ -4,6 +4,7 @@ import { DoorOpen, Plus, Receipt, Users, Wallet } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
+import { CollectionsChart } from "@/components/dashboard/collections-chart";
 import { SetupBuildingForm } from "@/components/owner/setup-building";
 import { FloorBoard } from "@/components/rooms/floor-board";
 import { Button } from "@/components/ui/button";
@@ -63,8 +64,8 @@ function Landing() {
               Run your building like a ledger, not a notebook.
             </h1>
             <p className="mt-4 max-w-md text-base leading-relaxed text-fg/80">
-              Occupancy floor by floor. Tenant files. Cash or UPI the moment rent lands —
-              with a printable slip for every month.
+              Occupancy floor by floor. Tenant hisab. Cash, UPI, card, or dummy —
+              then print the bill and the receipt for every month.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button asChild>
@@ -92,8 +93,8 @@ function Landing() {
           },
           {
             icon: Receipt,
-            title: "UPI & cash",
-            body: "Show a QR on your UPI ID, record the UTR, roll extra rupees forward, print a clean receipt.",
+            title: "Cash, UPI, card, dummy",
+            body: "Collect however the tenant pays. Extra charges go on the bill. Print a receipt for the ledger.",
           },
         ].map((f) => (
           <article key={f.title} className="rounded-3xl border border-border bg-surface p-5">
@@ -221,6 +222,12 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
             hint={`${data.stats.tenantCount} tenants`}
             danger={data.stats.overdue > 0}
           />
+        </div>
+      )}
+
+      {data && data.months.length > 0 && (
+        <div className="mb-8">
+          <CollectionsChart months={data.months} />
         </div>
       )}
 

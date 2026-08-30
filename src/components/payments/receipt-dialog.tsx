@@ -6,7 +6,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatDateIN, inr } from "@/lib/rent/months";
+import { formatDateIN, inr, methodLabel } from "@/lib/rent/months";
 import type { Building, Payment } from "@/lib/rent/types";
 
 export function ReceiptDialog({
@@ -54,9 +54,7 @@ export function ReceiptDialog({
               <dt className="text-muted">Status</dt>
               <dd className="text-right capitalize">{payment.status}</dd>
               <dt className="text-muted">Method</dt>
-              <dd className="text-right capitalize">
-                {payment.paidBy === "upi" ? "UPI" : payment.paidBy || "—"}
-              </dd>
+              <dd className="text-right">{methodLabel(payment.paidBy)}</dd>
               <dt className="text-muted">Date</dt>
               <dd className="text-right">{formatDateIN(payment.paidAt)}</dd>
               <dt className="text-muted">Txn / UTR</dt>
