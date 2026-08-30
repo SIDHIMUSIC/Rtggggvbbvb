@@ -120,6 +120,7 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
   const dash = useQuery({ queryKey: rentKeys.dashboard, queryFn: () => getDashboard() });
   const [roomOpen, setRoomOpen] = useState(false);
   const [floorOpen, setFloorOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [roomNumber, setRoomNumber] = useState("");
   const [rent, setRent] = useState("3000");
   const [floor, setFloor] = useState("1");
@@ -131,6 +132,7 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: rentKeys.dashboard });
       void qc.invalidateQueries({ queryKey: rentKeys.building });
+      setSetupOpen(false);
       toast.success("Building ready");
     },
     onError: (e) => toast.error(errMsg(e)),
@@ -186,25 +188,31 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
   const data = dash.data;
   const needsSetup = data && !data.building.name;
   const empty = !data || data.rooms.length === 0;
+  const vacant = (data?.rooms ?? []).filter((r) => r.status === "vacant").length;
 
   return (
     <div>
       {needsSetup && (
-        <div className="mb-8 rounded-3xl border border-border bg-surface p-5">
-          <p className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
-            Building
-          </p>
-          <h2 className="mt-1 font-display text-2xl tracking-tight">Name the property</h2>
-          <p className="mt-1 mb-4 text-sm text-muted">
-            Optional now. Needed later for UPI QR and receipts. You can still add floors
-            and tenants below.
-          </p>
-          <SetupBuildingForm
-            ownerHint={ownerHint}
-            submitLabel="Save building"
-            busy={setup.isPending}
-            onSave={(b) => setup.mutate(b)}
-          />
+        <div className="mb-6 rounded-2xl border border-border bg-surface px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted">
+              Optional: name the building for UPI receipts. Floors, tenants, and
+              hisab work without it.
+            </p>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSetupOpen((v) => !v)}>
+              {setupOpen ? "Hide" : "Set name"}
+            </Button>
+          </div>
+          {setupOpen && (
+            <div className="mt-4">
+              <SetupBuildingForm
+                ownerHint={ownerHint}
+                submitLabel="Save building"
+                busy={setup.isPending}
+                onSave={(b) => setup.mutate(b)}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -237,9 +245,15 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
             <Layers className="size-4" />
             Add floor
           </Button>
-          <Button type="button" onClick={() => setRoomOpen(true)}>
+          <Button type="button" variant="secondary" onClick={() => setRoomOpen(true)}>
             <Plus className="size-4" />
             Add room
+          </Button>
+          <Button asChild>
+            <Link to="/tenants" search={{ new: true }}>
+              <Users className="size-4" />
+              Add tenant
+            </Link>
           </Button>
         </div>
       </div>
@@ -262,20 +276,52 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
         </div>
       )}
 
-      {data && data.months.length > 0 && (
+      {data && data.months.length > 0 && data.stats.income + data.stats.pending > 0 && (
         <div className="mb-8">
           <CollectionsChart months={data.months} />
         </div>
       )}
 
       {empty ? (
-        <div className="rounded-3xl border border-dashed border-border px-6 py-16 text-center">
-          <Wallet className="mx-auto size-8 text-muted" />
-          <p className="mt-3 font-display text-xl">No rooms yet</p>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-muted">
-            Add a floor of rooms, one room, or load a four-floor sample building with a few
-            tenants to see the ledger.
+        <div className="rounded-3xl border border-dashed border-border px-6 py-12">
+          <p className="text-center font-display text-xl">Start the ledger in three steps</p>
+          <p className="mx-auto mt-2 max-w-sm text-center text-sm text-muted">
+            Floor first, then a tenant, then collect rent on Hisab. Nothing is missing —
+            add it here.
           </p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            <button
+              type="button"
+              className="rounded-2xl border border-border bg-surface p-5 text-left hover:border-accent/40"
+              onClick={() => {
+                setFloor(suggestedFloor);
+                setFloorOpen(true);
+              }}
+            >
+              <Layers className="size-5 text-accent" />
+              <p className="mt-3 font-medium">1. Add floor</p>
+              <p className="mt-1 text-sm text-muted">Creates vacant rooms F1-R1, F1-R2…</p>
+            </button>
+            <Link
+              to="/tenants"
+              search={{ new: true }}
+              className="rounded-2xl border border-border bg-surface p-5 hover:border-accent/40"
+            >
+              <Users className="size-5 text-accent" />
+              <p className="mt-3 font-medium">2. Add tenant</p>
+              <p className="mt-1 text-sm text-muted">
+                {vacant ? `${vacant} vacant rooms ready` : "Needs a vacant room first"}
+              </p>
+            </Link>
+            <Link
+              to="/payments"
+              className="rounded-2xl border border-border bg-surface p-5 hover:border-accent/40"
+            >
+              <Wallet className="size-5 text-accent" />
+              <p className="mt-3 font-medium">3. Collect rent</p>
+              <p className="mt-1 text-sm text-muted">Cash, UPI, card, or dummy — then print.</p>
+            </Link>
+          </div>
         </div>
       ) : (
         data && <FloorBoard rooms={data.rooms} />
@@ -404,18 +450,15 @@ function Stat({
 
 function DashboardSkeleton() {
   return (
-    <div>
-      <Skeleton className="h-8 w-48" />
-      <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-3xl" />
-        ))}
+    <div className="space-y-4">
+      <Skeleton className="h-10 w-56" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Skeleton className="h-24 rounded-3xl" />
+        <Skeleton className="h-24 rounded-3xl" />
+        <Skeleton className="h-24 rounded-3xl" />
+        <Skeleton className="h-24 rounded-3xl" />
       </div>
-      <div className="mt-8 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 rounded-2xl" />
-        ))}
-      </div>
+      <Skeleton className="h-64 rounded-3xl" />
     </div>
   );
 }

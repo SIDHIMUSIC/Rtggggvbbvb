@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Pencil, Plus, Printer, Trash2, Wallet } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { ChargeDialog } from "@/components/payments/charge-dialog";
@@ -32,11 +32,12 @@ import {
 import type { PayMethod, Payment, Tenant } from "@/lib/rent/types";
 import { cn, errMsg } from "@/lib/utils";
 
-type Search = { id?: number };
+type Search = { id?: number; new?: boolean };
 
 export const Route = createFileRoute("/tenants")({
   validateSearch: (s: Record<string, unknown>): Search => ({
     id: typeof s.id === "number" ? s.id : s.id ? Number(s.id) : undefined,
+    new: s.new === true || s.new === "1" || s.new === 1,
   }),
   component: TenantsPage,
 });
@@ -72,7 +73,7 @@ function emptyForm(roomNumber = "") {
 }
 
 function TenantsView() {
-  const { id } = Route.useSearch();
+  const { id, new: wantNew } = Route.useSearch();
   const navigate = useNavigate({ from: "/tenants" });
   const qc = useQueryClient();
   const dash = useQuery({ queryKey: rentKeys.dashboard, queryFn: () => getDashboard() });
@@ -97,6 +98,18 @@ function TenantsView() {
 
   const tenants = dash.data?.tenants ?? [];
   const selected = detail.data ?? tenants.find((t) => t.id === id);
+
+  useEffect(() => {
+    if (!wantNew || dash.isLoading) return;
+    if (vacantRooms.length === 0) {
+      toast.error("Add a vacant room first, then assign a tenant.");
+    } else {
+      setEditing(null);
+      setForm(emptyForm(vacantRooms[0]?.roomNumber ?? ""));
+      setFormOpen(true);
+    }
+    void navigate({ search: { id } });
+  }, [wantNew, dash.isLoading, vacantRooms, id, navigate]);
 
   const save = useMutation({
     mutationFn: async () => {

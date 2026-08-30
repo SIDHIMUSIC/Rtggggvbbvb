@@ -9,18 +9,33 @@ import appCss from "../styles.css?url";
 
 const APP_NAME = "Rentweb";
 
-const fetchSessionUser = createServerFn({ method: "GET" }).handler(async () => {
+const fetchSessionUser = createServerFn({ method: "POST" })
+  .validator((input: { bearer?: string } = {}) => ({
+    bearer: input?.bearer ? String(input.bearer) : undefined,
+  }))
+  .handler(async ({ data }) => {
+    try {
+      const { getSessionUser } = await import("@/lib/auth/verify.server");
+      const u = await getSessionUser(data.bearer);
+      return u ? { id: u.id, email: u.email } : null;
+    } catch {
+      return null;
+    }
+  });
+
+function readPreviewBearer(): string | undefined {
+  if (typeof window === "undefined") return undefined;
   try {
-    const { getSessionUser } = await import("@/lib/auth/verify.server");
-    const u = await getSessionUser();
-    return u ? { id: u.id, email: u.email } : null;
+    return window.sessionStorage.getItem("grok-auth.bearer-token") ?? undefined;
   } catch {
-    return null;
+    return undefined;
   }
-});
+}
 
 export const Route = createRootRoute({
-  beforeLoad: async () => ({ sessionUser: await fetchSessionUser() }),
+  beforeLoad: async () => ({
+    sessionUser: await fetchSessionUser({ data: { bearer: readPreviewBearer() } }),
+  }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },

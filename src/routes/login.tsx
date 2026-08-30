@@ -12,14 +12,23 @@ export const Route = createFileRoute("/login")({ component: Login });
 
 const BEARER_KEY = "grok-auth.bearer-token";
 
-function stashAuthToken(response: Response) {
-  const token = response.headers.get("set-auth-token");
+function stashToken(token: string | null | undefined) {
   if (!token || typeof window === "undefined") return;
   try {
     window.sessionStorage.setItem(BEARER_KEY, token);
   } catch {
     /* storage unavailable */
   }
+}
+
+function stashAuthToken(response: Response) {
+  stashToken(response.headers.get("set-auth-token"));
+}
+
+function stashSessionBody(data: unknown) {
+  if (!data || typeof data !== "object") return;
+  const session = (data as { session?: { token?: string } }).session;
+  stashToken(session?.token);
 }
 
 function mapAuthError(raw: string, mode: "in" | "up"): string {
@@ -38,6 +47,9 @@ function mapAuthError(raw: string, mode: "in" | "up"): string {
   }
   if (m.includes("origin")) {
     return "Could not reach the sign-in server. Refresh and try again.";
+  }
+  if (m.includes("session did not stick") || m.includes("did not stick")) {
+    return "Could not keep you signed in. Refresh and try again.";
   }
   return raw || (mode === "up" ? "Could not create the owner account." : "Could not sign in.");
 }
@@ -66,7 +78,10 @@ function Login() {
   }
 
   async function finishAuth() {
-    await authClient.getSession();
+    const session = await authClient.getSession();
+    if (!session.data?.user) {
+      throw new Error("Could not keep you signed in. Refresh and try again.");
+    }
     await router.invalidate();
     await navigate({ to: "/" });
   }
@@ -82,11 +97,13 @@ function Login() {
     };
     try {
       if (mode === "up") {
-        const res = await authClient.signUp.email({ email, password, name, fetchOptions });
+        const res = await authClient.signUp.email({ email, password, name }, fetchOptions);
         if (res.error) throw new Error(mapAuthError(res.error.message || "", "up"));
+        stashSessionBody(res.data);
       } else {
-        const res = await authClient.signIn.email({ email, password, fetchOptions });
+        const res = await authClient.signIn.email({ email, password }, fetchOptions);
         if (res.error) throw new Error(mapAuthError(res.error.message || "", "in"));
+        stashSessionBody(res.data);
       }
       await finishAuth();
     } catch (err) {
