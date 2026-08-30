@@ -102,3 +102,23 @@ export type RoomDetail = {
   room: Room;
   tenant: TenantWithLedger | null;
 };
+
+export type PayPortal = {
+  token: string;
+  building: Building;
+  tenant: {
+    id: number;
+    name: string;
+    roomNumber: string;
+    phone: string;
+  };
+  due: Payment[];
+  events: PaymentEvent[];
+  totalDue: number;
+};
+
+export type PayConfirm = {
+  payment: Payment;
+  event: PaymentEvent;
+  portal: PayPortal;
+};

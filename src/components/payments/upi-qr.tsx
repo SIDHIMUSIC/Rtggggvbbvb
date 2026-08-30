@@ -11,27 +11,41 @@ export function UpiQr({
   className?: string;
   label?: string;
 }) {
-  const { size, path } = useMemo(() => {
-    const qr = encode(value, { ecc: "M", border: 2 });
-    const d = qr.data
-      .flatMap((row, y) =>
-        row.flatMap((on, x) => (on ? [`M${x} ${y}h1v1h-1z`] : [])),
-      )
-      .join("");
-    return { size: qr.size, path: d };
+  const qr = useMemo(() => {
+    if (!value) return null;
+    try {
+      const matrix = encode(value, { ecc: "M", border: 4 });
+      const d = matrix.data
+        .flatMap((row, y) => row.flatMap((on, x) => (on ? [`M${x} ${y}h1v1h-1z`] : [])))
+        .join("");
+      return { size: matrix.size, path: d };
+    } catch {
+      return null;
+    }
   }, [value]);
 
+  if (!value || !qr) {
+    return (
+      <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted">
+        QR is waiting on a UPI ID in building settings.
+      </p>
+    );
+  }
+
   return (
-    <figure className={cn("mx-auto w-full max-w-[220px]", className)}>
-      <div className="rounded-2xl bg-primary p-3">
+    <figure className={cn("mx-auto w-full max-w-[240px]", className)}>
+      <div className="rounded-2xl border border-neutral-200 p-3 shadow-sm" style={{ background: "#ffffff" }}>
         <svg
-          viewBox={`0 0 ${size} ${size}`}
-          className="aspect-square w-full text-primary-fg"
+          viewBox={`0 0 ${qr.size} ${qr.size}`}
+          width={220}
+          height={220}
+          className="mx-auto block aspect-square w-full"
           shapeRendering="crispEdges"
           role="img"
           aria-label={label ?? "UPI QR code"}
         >
-          <path fill="currentColor" d={path} />
+          <rect width={qr.size} height={qr.size} fill="#ffffff" />
+          <path fill="#111111" d={qr.path} />
         </svg>
       </div>
       {label ? (

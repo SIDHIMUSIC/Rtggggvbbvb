@@ -80,12 +80,38 @@
 @media print {
   header,
   nav,
-  [data-sonner-toaster] {
+  [data-sonner-toaster],
+  .no-print,
+  button,
+  [data-slot="dialog-overlay"],
+  [data-radix-dialog-overlay] {
     display: none !important;
   }
 
-  body {
-    background: white;
-    color: black;
+  html, body, #app {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .print-host {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #111 !important;
+    padding: 0 !important;
+  }
+
+  .print-sheet {
+    border-color: #111 !important;
+    background: #fff !important;
+    color: #111 !important;
+    box-shadow: none !important;
   }
 }
