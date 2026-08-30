@@ -1,5 +1,5 @@
 export function isUpiId(value: string): boolean {
-  return /^[\w.\-]{2,256}@[a-zA-Z]{2,64}$/.test(value.trim());
+  return /^[\w.-]{2,256}@[a-zA-Z]{2,64}$/.test(value.trim());
 }
 
 export function upiPayUrl(opts: {

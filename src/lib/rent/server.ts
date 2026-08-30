@@ -272,7 +272,7 @@ export const upsertBuilding = createServerFn({ method: "POST" })
     const name = String(input.name ?? "").trim();
     const upiId = String(input.upiId ?? "").trim().toLowerCase();
     if (!name) throw new Error("Building name is required");
-    if (upiId && !/^[\w.\-]{2,256}@[a-z]{2,64}$/.test(upiId)) {
+    if (upiId && !/^[\w.-]{2,256}@[a-z]{2,64}$/.test(upiId)) {
       throw new Error("Enter a valid UPI ID, like name@okaxis");
     }
     return {
