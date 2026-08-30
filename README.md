@@ -2,6 +2,8 @@
 
 Owner portal for a building: occupancy board, tenant files, and rent collection (cash or UPI QR).
 
+**Live:** [rentweb-owner.vercel.app](https://rentweb-owner.vercel.app)
+
 ## Owner login
 
 - Google, X, or email + password
@@ -15,4 +17,4 @@ Owner portal for a building: occupancy board, tenant files, and rent collection 
 - Extra rupees roll forward to later months
 - Print a receipt with building name, room, month, and txn id
 
-This app is built to run in the Grok App Builder preview and deploy. Core product code lives in `src/routes`, `src/components`, `src/lib/rent`, and `migrations`.
+This app is TanStack Start (Vite), not Next.js. Vercel deploys with the `tanstack-start` framework preset.
