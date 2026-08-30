@@ -59,6 +59,9 @@ export function SetupBuildingForm({
             onChange={(e) => setPhone(e.target.value)}
             placeholder="98765 43210"
           />
+          <p className="mt-1.5 text-xs text-faint">
+            Same number can receive the owner forgot-password OTP.
+          </p>
         </div>
       </div>
       <div>
