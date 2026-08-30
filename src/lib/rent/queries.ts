@@ -5,4 +5,5 @@ export const rentKeys = {
   tenant: (id: number) => ["rent", "tenant", id] as const,
   payments: (tenantId?: number) => ["rent", "payments", tenantId ?? "all"] as const,
   room: (id: number) => ["rent", "room", id] as const,
+  claims: ["rent", "claims"] as const,
 };

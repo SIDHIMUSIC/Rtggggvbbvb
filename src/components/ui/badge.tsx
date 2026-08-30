@@ -11,6 +11,7 @@ const badgeVariants = cva(
         paid: "bg-accent/15 text-accent",
         unpaid: "bg-danger/15 text-danger",
         partial: "bg-warn/15 text-warn",
+        pending: "bg-warn/15 text-warn",
         vacant: "bg-accent/15 text-accent",
         occupied: "bg-danger/15 text-danger",
       },
