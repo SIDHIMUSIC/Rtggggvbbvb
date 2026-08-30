@@ -6,7 +6,7 @@ import { Checkout } from "@/components/payments/checkout";
 import { ReceiptDialog } from "@/components/payments/receipt-dialog";
 import { Badge } from "@/components/ui/badge";
 import { inr } from "@/lib/rent/months";
-import { confirmTenantPay, getPayPortal } from "@/lib/rent/server";
+import { confirmTenantPay, getPayPortal } from "@/lib/rent/portal-server";
 import type { PayConfirm, Payment } from "@/lib/rent/types";
 import { errMsg } from "@/lib/utils";
 
@@ -29,7 +29,12 @@ function TenantPayPage() {
   }, [portal.data]);
 
   const payMut = useMutation({
-    mutationFn: (input: { paymentId: number; amount: number; method: PayConfirm["event"]["method"]; reference: string }) =>
+    mutationFn: (input: {
+      paymentId: number;
+      amount: number;
+      method: PayConfirm["event"]["method"];
+      reference: string;
+    }) =>
       confirmTenantPay({
         data: {
           token,
@@ -73,12 +78,13 @@ function TenantPayPage() {
   return (
     <div className="min-h-dvh bg-[#0b1220] px-4 py-8 text-white">
       <div className="mx-auto w-full max-w-md">
-        <p className="text-[11px] tracking-[0.16em] text-white/50 uppercase">{data.building.name || "Rentweb"}</p>
+        <p className="text-[11px] tracking-[0.16em] text-white/50 uppercase">
+          {data.building.name || "Rentweb"}
+        </p>
         <h1 className="mt-1 font-display text-3xl tracking-tight">Pay rent</h1>
         <p className="mt-2 text-sm text-white/70">
           {data.tenant.name} · Room {data.tenant.roomNumber}
         </p>
-
         <div className="mt-5 grid grid-cols-2 gap-2">
           <div className="rounded-2xl bg-white/8 px-4 py-3">
             <p className="text-[11px] text-white/50 uppercase">Due</p>
@@ -89,7 +95,6 @@ function TenantPayPage() {
             <p className="mt-1 text-xl tabular">{data.due.length}</p>
           </div>
         </div>
-
         {data.totalDue <= 0 ? (
           <p className="mt-8 rounded-2xl bg-emerald-500/15 px-4 py-6 text-center text-sm text-emerald-200">
             Nothing due. You are clear.
@@ -112,7 +117,6 @@ function TenantPayPage() {
             />
           </div>
         ) : null}
-
         {data.due.length > 1 ? (
           <ul className="mt-6 space-y-2">
             {data.due.map((p) => (
@@ -133,7 +137,6 @@ function TenantPayPage() {
           </ul>
         ) : null}
       </div>
-
       <ReceiptDialog
         payment={done?.payment ?? null}
         event={done?.event}
