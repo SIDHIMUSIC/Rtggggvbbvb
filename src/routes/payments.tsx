@@ -4,6 +4,7 @@ import { Printer, RotateCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
+import { OwnerClaims } from "@/components/payments/owner-claims";
 import { PayDialog } from "@/components/payments/pay-dialog";
 import { ReceiptDialog } from "@/components/payments/receipt-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -99,6 +100,8 @@ function PaymentsView() {
         <p className="text-xs font-medium tracking-[0.18em] text-muted uppercase">Money</p>
         <h1 className="mt-1 font-display text-3xl tracking-tight">Hisab</h1>
       </div>
+
+      <OwnerClaims />
 
       {dash.isLoading ? (
         <Skeleton className="h-80 rounded-3xl" />
