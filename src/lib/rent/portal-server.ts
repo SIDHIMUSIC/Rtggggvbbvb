@@ -4,7 +4,6 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { mintPayToken, readPayToken } from "./pay-token";
 import { txId } from "./months";
 import { PAY_METHODS, type PayMethod, type Payment, type PaymentEvent, type PaymentStatus } from "./types";
-import { getBuilding, getTenant } from "./server";
 
 export const getTenantPayLink = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -14,7 +13,12 @@ export const getTenantPayLink = createServerFn({ method: "GET" })
     return { tenantId };
   })
   .handler(async ({ context, data }) => {
-    await getTenant({ data: { id: data.tenantId } });
+    const sql = await getSql();
+    const rows = await sql<{ id: number }>`
+      select id from tenants
+      where id = ${data.tenantId} and user_id = ${context.userId} and is_active = true
+    `;
+    if (!rows[0]) throw new Error("Tenant not found");
     const token = mintPayToken(context.userId, data.tenantId);
     return { token, path: `/pay/${token}` };
   });
@@ -27,11 +31,8 @@ async function loadPortal(token: string) {
     name: string;
     phone: string;
     room_number: string;
-    is_active: boolean;
-    rent_amount: number;
-    start_date: string;
   }>`
-    select id, name, phone, room_number, is_active, rent_amount, start_date
+    select id, name, phone, room_number
     from tenants
     where id = ${tenantId} and user_id = ${userId} and is_active = true
   `;
@@ -183,23 +184,49 @@ export const confirmTenantPay = createServerFn({ method: "POST" })
       if (dup[0]) {
         const portal = await loadPortal(data.token);
         const event = portal.events.find((e) => e.id === dup[0]!.id) ?? portal.events[0]!;
-        const payment =
-          portal.due.find((p) => p.id === data.paymentId) ??
-          portal.events.length
-            ? ((await loadPortal(data.token)).due[0] as Payment)
-            : (portal.due[0] as Payment);
-        return { payment: payment ?? portal.due[0]!, event, portal };
+        const paidRows = await sql<{
+          id: number;
+          tenant_id: number;
+          room_number: string;
+          month: string;
+          month_index: number;
+          total_rent: number;
+          paid_amount: number;
+          remaining_amount: number;
+          status: string;
+          paid_by: string;
+          paid_at: string | Date | null;
+          transaction_id: string;
+          extra_amount: number;
+          extra_note: string;
+        }>`select id, tenant_id, room_number, month, month_index, total_rent, paid_amount,
+                  remaining_amount, status, paid_by, paid_at, transaction_id, extra_amount, extra_note
+           from payments where id = ${data.paymentId} and user_id = ${userId}`;
+        const row = paidRows[0]!;
+        const payment: Payment = {
+          id: row.id,
+          tenantId: row.tenant_id,
+          roomNumber: row.room_number,
+          month: row.month,
+          monthIndex: Number(row.month_index),
+          totalRent: Number(row.total_rent),
+          paidAmount: Number(row.paid_amount),
+          remainingAmount: Number(row.remaining_amount),
+          status: row.status as PaymentStatus,
+          paidBy: row.paid_by ?? "",
+          paidAt: row.paid_at ? new Date(row.paid_at).toISOString() : null,
+          transactionId: row.transaction_id ?? "",
+          extraAmount: Number(row.extra_amount ?? 0),
+          extraNote: row.extra_note ?? "",
+        };
+        return { payment, event, portal };
       }
     }
 
     const tid = data.reference || txId();
     const now = new Date().toISOString();
     let remainingToApply = data.amount;
-    const queue = await sql<{
-      id: number;
-      paid_amount: number;
-      remaining_amount: number;
-    }>`
+    const queue = await sql<{ id: number; paid_amount: number; remaining_amount: number }>`
       select id, paid_amount, remaining_amount from payments
       where user_id = ${userId} and tenant_id = ${tenantId}
         and month_index >= ${bill[0].month_index} and status <> 'paid'
@@ -230,9 +257,42 @@ export const confirmTenantPay = createServerFn({ method: "POST" })
       values (${userId}, ${tenantId}, ${data.paymentId}, ${data.amount}, ${data.method}, ${tid})
     `;
     const portal = await loadPortal(data.token);
-    const payment =
-      portal.due.find((p) => p.id === data.paymentId) ??
-      ({ ...portal.due[0], id: data.paymentId, paidAmount: data.amount, remainingAmount: 0, status: "paid" } as Payment);
     const event = portal.events[0]!;
-    return { payment: payment ?? event && portal.due[0]!, event, portal };
+    const paidRows = await sql<{
+      id: number;
+      tenant_id: number;
+      room_number: string;
+      month: string;
+      month_index: number;
+      total_rent: number;
+      paid_amount: number;
+      remaining_amount: number;
+      status: string;
+      paid_by: string;
+      paid_at: string | Date | null;
+      transaction_id: string;
+      extra_amount: number;
+      extra_note: string;
+    }>`select id, tenant_id, room_number, month, month_index, total_rent, paid_amount,
+              remaining_amount, status, paid_by, paid_at, transaction_id, extra_amount, extra_note
+       from payments where id = ${data.paymentId} and user_id = ${userId}`;
+    const row = paidRows[0]!;
+    const payment: Payment = {
+      id: row.id,
+      tenantId: row.tenant_id,
+      roomNumber: row.room_number,
+      month: row.month,
+      monthIndex: Number(row.month_index),
+      totalRent: Number(row.total_rent),
+      paidAmount: Number(row.paid_amount),
+      remainingAmount: Number(row.remaining_amount),
+      status: row.status as PaymentStatus,
+      paidBy: row.paid_by ?? "",
+      paidAt: row.paid_at ? new Date(row.paid_at).toISOString() : null,
+      transactionId: row.transaction_id ?? "",
+      extraAmount: Number(row.extra_amount ?? 0),
+      extraNote: row.extra_note ?? "",
+      tenantName: portal.tenant.name,
+    };
+    return { payment, event, portal };
   });
