@@ -274,6 +274,13 @@ function Login() {
                   {showPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
+              {mode === "in" && (
+                <div className="mt-2 flex justify-end">
+                  <Link to="/forgot" className="text-xs font-medium text-accent hover:text-fg">
+                    Forgot password?
+                  </Link>
+                </div>
+              )}
             </div>
             {error && (
               <p className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
