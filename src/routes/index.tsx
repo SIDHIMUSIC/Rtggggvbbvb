@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { CollectionsChart } from "@/components/dashboard/collections-chart";
 import { SetupBuildingForm } from "@/components/owner/setup-building";
+import { OwnerClaims } from "@/components/payments/owner-claims";
 import { FloorBoard } from "@/components/rooms/floor-board";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -200,6 +201,7 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
 
   return (
     <div>
+      <OwnerClaims />
       {needsSetup && (
         <div className="mb-6 rounded-2xl border border-border bg-surface px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
