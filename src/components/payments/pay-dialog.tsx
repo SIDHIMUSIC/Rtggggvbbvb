@@ -15,6 +15,7 @@ import { inr } from "@/lib/rent/months";
 import { upiPayUrl } from "@/lib/rent/upi";
 import type { Building, PayMethod, Payment } from "@/lib/rent/types";
 import { cn } from "@/lib/utils";
+import { CopyPayLink } from "./copy-pay-link";
 import { UpiQr } from "./upi-qr";
 
 const methods: Array<{ id: PayMethod; label: string; icon: typeof Smartphone }> = [
@@ -88,9 +89,7 @@ export function PayDialog({
         toast.error("Enter the card number (last 4 is stored, never the full PAN)");
         return;
       }
-      const tag = `**** ${last4(digits)}${cardName ? ` · ${cardName.trim()}` : ""}${
-        reference.trim() ? ` · ${reference.trim()}` : ""
-      }`;
+      const tag = `**** ${last4(digits)}${cardName ? ` · ${cardName.trim()}` : ""}${reference.trim() ? ` · ${reference.trim()}` : ""}`;
       onPay(n, "card", tag.slice(0, 64));
       return;
     }
@@ -114,6 +113,7 @@ export function PayDialog({
 
         {payment && (
           <div className="mt-4 space-y-4">
+            <CopyPayLink tenantId={payment.tenantId} />
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-2xl bg-bg px-4 py-3 text-sm">
                 <p className="text-[11px] text-muted uppercase">Paid</p>
@@ -136,9 +136,7 @@ export function PayDialog({
                     onClick={() => setMethod(m.id)}
                     className={cn(
                       "flex h-11 items-center justify-center gap-1.5 rounded-[10px] border text-sm font-medium",
-                      on
-                        ? "border-primary bg-primary text-primary-fg"
-                        : "border-border bg-surface-2 text-fg",
+                      on ? "border-primary bg-primary text-primary-fg" : "border-border bg-surface-2 text-fg",
                     )}
                   >
                     <Icon className="size-4" />
@@ -150,40 +148,26 @@ export function PayDialog({
 
             <div>
               <Label htmlFor="pay-amount">Amount</Label>
-              <Input
-                id="pay-amount"
-                type="number"
-                min={1}
-                value={amount}
-                placeholder={String(remaining)}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-              <p className="mt-1.5 text-xs text-faint">
-                Extra rupees roll forward to later months.
-              </p>
+              <Input id="pay-amount" type="number" min={1} value={amount} placeholder={String(remaining)} onChange={(e) => setAmount(e.target.value)} />
+              <p className="mt-1.5 text-xs text-faint">Extra rupees roll forward to later months.</p>
             </div>
 
             {method === "upi" && (
               <div className="rounded-2xl border border-border bg-bg p-4">
                 {upiId ? (
                   <>
-                    <UpiQr value={qrValue} label="Tenant scans this to pay you" />
+                    <UpiQr value={qrValue} label="Scan with GPay, PhonePe or Paytm" />
+                    {qrValue ? (
+                      <Button type="button" className="mt-3 w-full" variant="secondary" onClick={() => { window.location.href = qrValue; }}>
+                        Open UPI app
+                      </Button>
+                    ) : null}
                     <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
                       <div className="min-w-0">
                         <p className="text-[11px] text-muted uppercase">UPI ID</p>
                         <p className="truncate font-mono text-sm">{upiId}</p>
                       </div>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-9 shrink-0"
-                        aria-label="Copy UPI ID"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(upiId);
-                          toast.success("UPI ID copied");
-                        }}
-                      >
+                      <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0" aria-label="Copy UPI ID" onClick={() => { void navigator.clipboard.writeText(upiId); toast.success("UPI ID copied"); }}>
                         <Copy className="size-4" />
                       </Button>
                     </div>
@@ -191,21 +175,12 @@ export function PayDialog({
                 ) : (
                   <p className="text-center text-sm text-muted">
                     Add your UPI ID in{" "}
-                    <Link to="/settings" className="text-fg underline underline-offset-2">
-                      building settings
-                    </Link>{" "}
-                    to show a collection QR.
+                    <Link to="/settings" className="text-fg underline underline-offset-2">building settings</Link>{" "}to show a collection QR.
                   </p>
                 )}
                 <div className="mt-3">
                   <Label htmlFor="upi-ref">UPI UTR / reference</Label>
-                  <Input
-                    id="upi-ref"
-                    value={reference}
-                    onChange={(e) => setReference(e.target.value)}
-                    placeholder="From the bank SMS"
-                    autoCapitalize="characters"
-                  />
+                  <Input id="upi-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="From the bank SMS" autoCapitalize="characters" />
                 </div>
               </div>
             )}
@@ -213,61 +188,29 @@ export function PayDialog({
             {method === "cash" && (
               <div>
                 <Label htmlFor="cash-ref">Receipt number</Label>
-                <Input
-                  id="cash-ref"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="Optional"
-                />
+                <Input id="cash-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Optional" />
               </div>
             )}
 
             {method === "card" && (
               <div className="space-y-3 rounded-2xl border border-border bg-bg p-4">
-                <p className="text-xs leading-relaxed text-muted">
-                  Record a card swipe or POS settlement. Only the last four digits
-                  are stored — never the full card number.
-                </p>
+                <p className="text-xs leading-relaxed text-muted">Record a card swipe or POS settlement. Only the last four digits are stored.</p>
                 <div>
                   <Label htmlFor="card-name">Name on card</Label>
-                  <Input
-                    id="card-name"
-                    value={cardName}
-                    onChange={(e) => setCardName(e.target.value)}
-                    placeholder="As printed"
-                    autoComplete="cc-name"
-                  />
+                  <Input id="card-name" value={cardName} onChange={(e) => setCardName(e.target.value)} placeholder="As printed" autoComplete="cc-name" />
                 </div>
                 <div>
                   <Label htmlFor="card-number">Card number</Label>
-                  <Input
-                    id="card-number"
-                    inputMode="numeric"
-                    autoComplete="cc-number"
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value)}
-                    placeholder="XXXX XXXX XXXX 4242"
-                  />
+                  <Input id="card-number" inputMode="numeric" autoComplete="cc-number" value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="XXXX XXXX XXXX 4242" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="card-exp">Expiry</Label>
-                    <Input
-                      id="card-exp"
-                      value={cardExpiry}
-                      onChange={(e) => setCardExpiry(e.target.value)}
-                      placeholder="MM/YY"
-                      autoComplete="cc-exp"
-                    />
+                    <Input id="card-exp" value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} placeholder="MM/YY" autoComplete="cc-exp" />
                   </div>
                   <div>
                     <Label htmlFor="card-auth">Auth / approval</Label>
-                    <Input
-                      id="card-auth"
-                      value={reference}
-                      onChange={(e) => setReference(e.target.value)}
-                      placeholder="Optional"
-                    />
+                    <Input id="card-auth" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Optional" />
                   </div>
                 </div>
               </div>
@@ -275,17 +218,12 @@ export function PayDialog({
 
             {method === "dummy" && (
               <p className="rounded-2xl border border-border bg-bg px-4 py-3 text-sm leading-relaxed text-muted">
-                Dummy books the amount as received with no money moving — use it
-                to test the ledger, bills, and receipts.
+                Dummy books the amount as received with no money moving — use it to test the ledger, bills, and receipts.
               </p>
             )}
 
             <Button type="button" className="w-full" disabled={busy} onClick={submit}>
-              {busy
-                ? "Recording…"
-                : method === "dummy"
-                  ? `Record dummy ${inr(payAmount || remaining)}`
-                  : `Mark ${inr(payAmount || remaining)} received`}
+              {busy ? "Recording…" : method === "dummy" ? `Record dummy ${inr(payAmount || remaining)}` : `Mark ${inr(payAmount || remaining)} received`}
             </Button>
           </div>
         )}
