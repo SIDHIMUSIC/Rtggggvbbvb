@@ -191,10 +191,24 @@ function TenantsView() {
           <p className="text-xs font-medium tracking-[0.18em] text-muted uppercase">People</p>
           <h1 className="mt-1 font-display text-3xl tracking-tight">Tenants</h1>
         </div>
-        <Button type="button" onClick={openCreate} disabled={vacantRooms.length === 0}>
-          <Plus className="size-4" />
-          Add tenant
-        </Button>
+        <div>
+          <Button
+            type="button"
+            onClick={() => {
+              if (vacantRooms.length === 0) {
+                toast.error("Add a vacant room first, then assign a tenant.");
+                return;
+              }
+              openCreate();
+            }}
+          >
+            <Plus className="size-4" />
+            Add tenant
+          </Button>
+          {vacantRooms.length === 0 && (
+            <p className="mt-1 text-right text-[11px] text-muted">Needs a vacant room</p>
+          )}
+        </div>
       </div>
 
       {dash.isLoading ? (

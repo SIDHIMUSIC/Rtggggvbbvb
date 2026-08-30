@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useRouteContext } from "@tanstack/react-router";
-import { DoorOpen, Plus, Receipt, Users, Wallet } from "lucide-react";
-import { useState } from "react";
+import { DoorOpen, Layers, Plus, Receipt, Users, Wallet } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { CollectionsChart } from "@/components/dashboard/collections-chart";
@@ -13,9 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { inr } from "@/lib/rent/months";
+import { groupRoomsByFloor, inr } from "@/lib/rent/months";
 import { rentKeys } from "@/lib/rent/queries";
-import { addRoom, getDashboard, seedSampleBuilding, upsertBuilding } from "@/lib/rent/server";
+import { addFloor, addRoom, getDashboard, seedSampleBuilding, upsertBuilding } from "@/lib/rent/server";
 import type { Building } from "@/lib/rent/types";
 import { errMsg } from "@/lib/utils";
 
@@ -64,8 +64,8 @@ function Landing() {
               Run your building like a ledger, not a notebook.
             </h1>
             <p className="mt-4 max-w-md text-base leading-relaxed text-fg/80">
-              Occupancy floor by floor. Tenant hisab. Cash, UPI, card, or dummy —
-              then print the bill and the receipt for every month.
+              Add floors and rooms. Keep tenant files. Collect rent with cash, UPI, card,
+              or dummy — then print the bill.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button asChild>
@@ -83,13 +83,13 @@ function Landing() {
         {[
           {
             icon: DoorOpen,
-            title: "Occupancy board",
-            body: "See every floor at a glance. Vacant rooms stay quiet; occupied ones carry the tenant’s name.",
+            title: "Floors and rooms",
+            body: "Add a whole floor at once, or one room. Vacant rooms stay quiet; occupied ones carry the tenant’s name.",
           },
           {
             icon: Users,
             title: "Tenant files",
-            body: "Name, phone, deposit, start date. Months generate themselves from the day they moved in.",
+            body: "Add, edit, or remove a tenant. Months generate themselves from the day they moved in.",
           },
           {
             icon: Receipt,
@@ -108,12 +108,23 @@ function Landing() {
   );
 }
 
+function nextFloorNumber(rooms: { roomNumber: string }[]): number {
+  const nums = groupRoomsByFloor(rooms)
+    .map((f) => parseInt(f.floor.replace(/\D/g, ""), 10))
+    .filter((n) => Number.isFinite(n));
+  return (nums.length ? Math.max(...nums) : 0) + 1;
+}
+
 function Dashboard({ ownerHint }: { ownerHint: string }) {
   const qc = useQueryClient();
   const dash = useQuery({ queryKey: rentKeys.dashboard, queryFn: () => getDashboard() });
-  const [open, setOpen] = useState(false);
+  const [roomOpen, setRoomOpen] = useState(false);
+  const [floorOpen, setFloorOpen] = useState(false);
   const [roomNumber, setRoomNumber] = useState("");
   const [rent, setRent] = useState("3000");
+  const [floor, setFloor] = useState("1");
+  const [roomCount, setRoomCount] = useState("8");
+  const [floorRent, setFloorRent] = useState("3000");
 
   const setup = useMutation({
     mutationFn: (data: Building) => upsertBuilding({ data }),
@@ -138,12 +149,30 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
     mutationFn: () => addRoom({ data: { roomNumber, rent: Number(rent) } }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: rentKeys.dashboard });
-      setOpen(false);
+      setRoomOpen(false);
       setRoomNumber("");
       toast.success("Room added");
     },
     onError: (e) => toast.error(errMsg(e)),
   });
+
+  const floorMut = useMutation({
+    mutationFn: () =>
+      addFloor({
+        data: { floor: Number(floor), roomCount: Number(roomCount), rent: Number(floorRent) },
+      }),
+    onSuccess: (rooms) => {
+      void qc.invalidateQueries({ queryKey: rentKeys.dashboard });
+      setFloorOpen(false);
+      toast.success(`${rooms.length} rooms added on floor ${floor}`);
+    },
+    onError: (e) => toast.error(errMsg(e)),
+  });
+
+  const suggestedFloor = useMemo(
+    () => String(nextFloorNumber(dash.data?.rooms ?? [])),
+    [dash.data?.rooms],
+  );
 
   if (dash.isLoading) return <DashboardSkeleton />;
   if (dash.error) {
@@ -158,38 +187,35 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
   const needsSetup = data && !data.building.name;
   const empty = !data || data.rooms.length === 0;
 
-  if (needsSetup) {
-    return (
-      <div className="mx-auto max-w-lg">
-        <p className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
-          First step
-        </p>
-        <h1 className="mt-1 font-display text-3xl tracking-tight">Set up your building</h1>
-        <p className="mt-2 mb-6 text-sm text-muted">
-          Name the property and add the UPI ID rent should land on. You can change this later.
-        </p>
-        <div className="rounded-3xl border border-border bg-surface p-5">
+  return (
+    <div>
+      {needsSetup && (
+        <div className="mb-8 rounded-3xl border border-border bg-surface p-5">
+          <p className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
+            Building
+          </p>
+          <h2 className="mt-1 font-display text-2xl tracking-tight">Name the property</h2>
+          <p className="mt-1 mb-4 text-sm text-muted">
+            Optional now. Needed later for UPI QR and receipts. You can still add floors
+            and tenants below.
+          </p>
           <SetupBuildingForm
             ownerHint={ownerHint}
-            submitLabel="Save and continue"
+            submitLabel="Save building"
             busy={setup.isPending}
             onSave={(b) => setup.mutate(b)}
           />
         </div>
-      </div>
-    );
-  }
+      )}
 
-  return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium tracking-[0.18em] text-muted uppercase">
             {data?.building.name || "Building"}
           </p>
           <h1 className="mt-1 font-display text-3xl tracking-tight">Occupancy board</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {empty && (
             <Button
               type="button"
@@ -200,7 +226,18 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
               Load sample building
             </Button>
           )}
-          <Button type="button" onClick={() => setOpen(true)}>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setFloor(suggestedFloor);
+              setFloorOpen(true);
+            }}
+          >
+            <Layers className="size-4" />
+            Add floor
+          </Button>
+          <Button type="button" onClick={() => setRoomOpen(true)}>
             <Plus className="size-4" />
             Add room
           </Button>
@@ -236,15 +273,15 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
           <Wallet className="mx-auto size-8 text-muted" />
           <p className="mt-3 font-display text-xl">No rooms yet</p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-muted">
-            Add your first room, or load a four-floor sample building with a few tenants to
-            see the ledger in action.
+            Add a floor of rooms, one room, or load a four-floor sample building with a few
+            tenants to see the ledger.
           </p>
         </div>
       ) : (
         data && <FloorBoard rooms={data.rooms} />
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={roomOpen} onOpenChange={setRoomOpen}>
         <DialogContent>
           <DialogTitle>Add a room</DialogTitle>
           <DialogDescription>Use a label like F1-R12 so floors group cleanly.</DialogDescription>
@@ -278,6 +315,63 @@ function Dashboard({ ownerHint }: { ownerHint: string }) {
             </div>
             <Button type="submit" className="w-full" disabled={add.isPending}>
               {add.isPending ? "Saving…" : "Save room"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={floorOpen} onOpenChange={setFloorOpen}>
+        <DialogContent>
+          <DialogTitle>Add a floor</DialogTitle>
+          <DialogDescription>
+            Creates vacant rooms F{floor || "n"}-R1 through F{floor || "n"}-R{roomCount || "n"}.
+          </DialogDescription>
+          <form
+            className="mt-4 space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              floorMut.mutate();
+            }}
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="floor-n">Floor number</Label>
+                <Input
+                  id="floor-n"
+                  type="number"
+                  min={1}
+                  max={40}
+                  value={floor}
+                  onChange={(e) => setFloor(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="floor-rooms">Rooms on floor</Label>
+                <Input
+                  id="floor-rooms"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={roomCount}
+                  onChange={(e) => setRoomCount(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="floor-rent">Monthly rent each</Label>
+              <Input
+                id="floor-rent"
+                type="number"
+                min={1}
+                value={floorRent}
+                onChange={(e) => setFloorRent(e.target.value)}
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={floorMut.isPending}>
+              {floorMut.isPending ? "Adding…" : "Add floor"}
             </Button>
           </form>
         </DialogContent>

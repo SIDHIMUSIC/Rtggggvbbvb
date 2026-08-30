@@ -2,18 +2,26 @@
 
 Owner portal for a building: occupancy board, tenant hisab, monthly bills, and rent collection.
 
-**Live:** [rentweb-owner.vercel.app](https://rentweb-owner.vercel.app)
+**Repo:** [SIDHIMUSIC/Rtggggvbbvb](https://github.com/SIDHIMUSIC/Rtggggvbbvb)
+
+**Live:** [rtggggvbbvb.vercel.app](https://rtggggvbbvb.vercel.app)
 
 ## Owner login
 
-- Google, X, or email + password
+- Create an owner account with email + password, or continue with Google / X
 - Each owner’s rooms, tenants, and ledger stay on their account
 
-## Hisab
+## Building
 
-- Monthly bills generated from each tenant’s start date
-- Extra charges (electricity, water, repairs) on any month
-- Running collections list per tenant
+- Add a whole floor of rooms in one step
+- Add, edit, or delete a single room
+- Occupancy board grouped floor by floor
+
+## Tenants
+
+- Add, edit, or remove a tenant
+- Name, phone, deposit, start date
+- Months generate themselves from the day they moved in
 
 ## Payments
 

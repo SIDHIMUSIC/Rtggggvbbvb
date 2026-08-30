@@ -408,6 +408,45 @@ export const addRoom = createServerFn({ method: "POST" })
     return mapRoom(rows[0]!);
   });
 
+export const addFloor = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { floor: number; roomCount: number; rent: number }) => {
+    const floor = Math.round(Number(input.floor));
+    const roomCount = Math.round(Number(input.roomCount));
+    const rent = Math.round(Number(input.rent));
+    if (!Number.isFinite(floor) || floor < 1 || floor > 40) {
+      throw new Error("Floor must be between 1 and 40");
+    }
+    if (!Number.isFinite(roomCount) || roomCount < 1 || roomCount > 30) {
+      throw new Error("Rooms on a floor must be between 1 and 30");
+    }
+    if (!Number.isFinite(rent) || rent <= 0) throw new Error("Rent must be a positive amount");
+    return { floor, roomCount, rent };
+  })
+  .handler(async ({ context, data }): Promise<Room[]> => {
+    const sql = await getSql();
+    const prefix = `F${data.floor}`;
+    const created: Room[] = [];
+    for (let i = 1; i <= data.roomCount; i++) {
+      const roomNumber = `${prefix}-R${i}`;
+      const dup = await sql<{ id: number }>`
+        select id from rooms
+        where user_id = ${context.userId} and room_number = ${roomNumber}
+      `;
+      if (dup.length) continue;
+      const rows = await sql<RoomRow>`
+        insert into rooms (user_id, room_number, rent, status, tenant_name)
+        values (${context.userId}, ${roomNumber}, ${data.rent}, 'vacant', '')
+        returning id, room_number, rent, status, tenant_name
+      `;
+      if (rows[0]) created.push(mapRoom(rows[0]));
+    }
+    if (created.length === 0) {
+      throw new Error(`Floor ${data.floor} already has those rooms`);
+    }
+    return created;
+  });
+
 export const updateRoom = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { id: number; rent: number }) => {

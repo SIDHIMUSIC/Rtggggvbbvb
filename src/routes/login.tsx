@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Navigate, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, useNavigate, useRouter } from "@tanstack/react-router";
 import { Building2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { GROK_PROVIDERS, authClient, authEnabled, signIn } from "@/lib/auth/client";
@@ -9,6 +9,18 @@ import { Label } from "@/components/ui/label";
 import { errMsg } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({ component: Login });
+
+const BEARER_KEY = "grok-auth.bearer-token";
+
+function stashAuthToken(response: Response) {
+  const token = response.headers.get("set-auth-token");
+  if (!token || typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(BEARER_KEY, token);
+  } catch {
+    /* storage unavailable */
+  }
+}
 
 function mapAuthError(raw: string, mode: "in" | "up"): string {
   const m = raw.toLowerCase();
@@ -24,12 +36,16 @@ function mapAuthError(raw: string, mode: "in" | "up"): string {
   if (m.includes("disabled")) {
     return "Sign-in is currently disabled.";
   }
+  if (m.includes("origin")) {
+    return "Could not reach the sign-in server. Refresh and try again.";
+  }
   return raw || (mode === "up" ? "Could not create the owner account." : "Could not sign in.");
 }
 
 function Login() {
   const { user, isPending } = useCurrentUserState();
   const navigate = useNavigate();
+  const router = useRouter();
   const [mode, setMode] = useState<"in" | "up">("in");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -49,21 +65,45 @@ function Login() {
     return <Navigate to="/" />;
   }
 
+  async function finishAuth() {
+    await authClient.getSession();
+    await router.invalidate();
+    await navigate({ to: "/" });
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setBusy(true);
+    const fetchOptions = {
+      onSuccess: (ctx: { response: Response }) => {
+        stashAuthToken(ctx.response);
+      },
+    };
     try {
       if (mode === "up") {
-        const res = await authClient.signUp.email({ email, password, name });
+        const res = await authClient.signUp.email({ email, password, name, fetchOptions });
         if (res.error) throw new Error(mapAuthError(res.error.message || "", "up"));
       } else {
-        const res = await authClient.signIn.email({ email, password });
+        const res = await authClient.signIn.email({ email, password, fetchOptions });
         if (res.error) throw new Error(mapAuthError(res.error.message || "", "in"));
       }
-      await navigate({ to: "/" });
+      await finishAuth();
     } catch (err) {
       setError(mapAuthError(errMsg(err), mode));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onProvider(providerId: string) {
+    setError("");
+    setBusy(true);
+    try {
+      await signIn(providerId, { callbackURL: "/" });
+      await finishAuth();
+    } catch (err) {
+      setError(mapAuthError(errMsg(err), "in"));
     } finally {
       setBusy(false);
     }
@@ -98,9 +138,9 @@ function Login() {
             </p>
             <ul className="mt-8 space-y-3 text-sm text-fg/80">
               {[
-                "Floor-by-floor occupancy board",
+                "Add floors and rooms",
+                "Add, edit, or remove tenants",
                 "Collect rent with UPI QR or cash",
-                "Printable receipts for every month",
               ].map((line) => (
                 <li key={line} className="flex items-center gap-2.5">
                   <ShieldCheck className="size-4 text-accent" />
@@ -131,8 +171,8 @@ function Login() {
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             {mode === "in"
-              ? "Use the email on this building’s account. Google and X work too."
-              : "One account per owner. Your rooms and rent stay on this login."}
+              ? "Email and password, or Google / X. New here? create an account below."
+              : "One account per owner. Then add floors, rooms, tenants, and payments."}
           </p>
 
           {authEnabled ? (
@@ -143,7 +183,8 @@ function Login() {
                   type="button"
                   variant="secondary"
                   className="w-full justify-center"
-                  onClick={() => signIn(p.providerId, { callbackURL: "/" })}
+                  disabled={busy}
+                  onClick={() => void onProvider(p.providerId)}
                 >
                   {p.label === "Google" ? <GoogleMark /> : <XMark />}
                   Continue with {p.label}
