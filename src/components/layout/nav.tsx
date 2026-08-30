@@ -1,7 +1,10 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState, useRouteContext } from "@tanstack/react-router";
 import { Building2, Receipt, Settings, Users, Wallet } from "lucide-react";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { UserChip } from "@/components/auth/user-chip";
+import { listPayClaims } from "@/lib/rent/portal-server";
+import { rentKeys } from "@/lib/rent/queries";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -17,6 +20,13 @@ export function Nav() {
   const { user, isPending } = useCurrentUserState();
   const knownUser = user ?? (isPending ? sessionUser : null);
   const showAuthPulse = isPending && Boolean(sessionUser) && !user;
+  const claims = useQuery({
+    queryKey: rentKeys.claims,
+    queryFn: () => listPayClaims(),
+    enabled: Boolean(knownUser),
+    refetchInterval: 20_000,
+  });
+  const waiting = claims.data?.length ?? 0;
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/80 bg-bg/85 backdrop-blur-md">
@@ -44,6 +54,11 @@ export function Nav() {
                 >
                   <Icon className="size-3.5" />
                   {l.label}
+                  {l.to === "/payments" && waiting > 0 ? (
+                    <span className="grid min-w-4 place-items-center rounded-full bg-warn px-1 text-[10px] font-medium text-bg">
+                      {waiting}
+                    </span>
+                  ) : null}
                 </Link>
               );
             })}
@@ -83,6 +98,12 @@ export function Nav() {
 
 export function MobileNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const claims = useQuery({
+    queryKey: rentKeys.claims,
+    queryFn: () => listPayClaims(),
+    refetchInterval: 20_000,
+  });
+  const waiting = claims.data?.length ?? 0;
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
       <div className="grid grid-cols-4">
@@ -94,12 +115,17 @@ export function MobileNav() {
               key={l.to}
               to={l.to}
               className={cn(
-                "flex min-h-11 flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
+                "relative flex min-h-11 flex-col items-center gap-1 py-2.5 text-[11px] font-medium",
                 active ? "text-fg" : "text-muted",
               )}
             >
               <Icon className="size-5" />
               {l.label}
+              {l.to === "/payments" && waiting > 0 ? (
+                <span className="absolute top-1 right-[18%] grid size-4 place-items-center rounded-full bg-warn text-[9px] text-bg">
+                  {waiting}
+                </span>
+              ) : null}
             </Link>
           );
         })}
