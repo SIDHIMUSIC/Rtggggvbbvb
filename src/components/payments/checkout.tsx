@@ -24,14 +24,12 @@ export function Checkout({
   tenantName,
   busy,
   onConfirm,
-  onClose,
 }: {
   payment: Payment;
   building?: Building | null;
   tenantName?: string;
   busy: boolean;
   onConfirm: (result: CheckoutResult) => Promise<void> | void;
-  onClose?: () => void;
 }) {
   const remaining = payment.remainingAmount;
   const [amount, setAmount] = useState(String(remaining));
@@ -62,8 +60,7 @@ export function Checkout({
       return;
     }
     setPhase("verifying");
-    const wait = nextMethod === "upi" ? 700 : 1600;
-    await new Promise((r) => setTimeout(r, wait));
+    await new Promise((r) => setTimeout(r, 600));
     try {
       await onConfirm({ amount: payAmount, method: nextMethod, reference });
       setPhase("success");
@@ -76,8 +73,8 @@ export function Checkout({
     return (
       <div className="rounded-2xl bg-white p-6 text-center text-neutral-900">
         <Loader2 className="mx-auto size-8 animate-spin text-[#0b72e7]" />
-        <p className="mt-3 text-sm font-medium">Verifying payment</p>
-        <p className="mt-1 text-xs text-neutral-500">Matching amount, time and UTR…</p>
+        <p className="mt-3 text-sm font-medium">Sending to owner</p>
+        <p className="mt-1 text-xs text-neutral-500">Your bill stays unpaid until they confirm.</p>
       </div>
     );
   }
@@ -85,14 +82,11 @@ export function Checkout({
   if (phase === "success") {
     return (
       <div className="rounded-2xl bg-white p-6 text-center text-neutral-900">
-        <CheckCircle2 className="mx-auto size-10 text-emerald-600" />
-        <p className="mt-3 text-lg font-semibold">Payment successful</p>
-        <p className="mt-1 text-sm text-neutral-600">{inr(payAmount)} received</p>
-        {onClose ? (
-          <Button type="button" className="mt-4 w-full" onClick={onClose}>
-            View receipt
-          </Button>
-        ) : null}
+        <CheckCircle2 className="mx-auto size-10 text-amber-500" />
+        <p className="mt-3 text-lg font-semibold">Reported to owner</p>
+        <p className="mt-1 text-sm text-neutral-600">
+          {inr(payAmount)} is waiting for confirm. Receipt comes after the owner accepts.
+        </p>
       </div>
     );
   }
@@ -123,7 +117,7 @@ export function Checkout({
             <MethodBtn active={method === "upi"} icon={Smartphone} title="UPI" hint="Scan QR or open GPay / PhonePe / Paytm" onClick={() => { setMethod("upi"); setPhase("upi"); }} />
             <MethodBtn active={method === "card"} icon={CreditCard} title="Card" hint="Visa / Mastercard / RuPay" onClick={() => { setMethod("card"); setPhase("card"); }} />
             <button type="button" onClick={() => void book("dummy", `TEST-${Date.now().toString().slice(-8)}`)} className="w-full rounded-xl border border-dashed border-neutral-300 px-3 py-2 text-left text-sm text-neutral-600">
-              Instant test pay — verifies automatically
+              Test report — still needs owner confirm
             </button>
           </div>
         )}
@@ -139,7 +133,7 @@ export function Checkout({
               </>
             ) : (
               <p className="rounded-xl bg-neutral-100 px-3 py-3 text-sm text-neutral-600">
-                Owner has not added a UPI ID yet. Use instant test pay, or ask them to save UPI in building settings.
+                Owner has not added a UPI ID yet. Pay them directly, then report UTR here.
               </p>
             )}
             <div>
@@ -147,7 +141,7 @@ export function Checkout({
               <Input id="ck-utr" value={utr} onChange={(e) => setUtr(e.target.value)} placeholder="12-digit UTR from bank SMS" className="border-neutral-300 bg-white text-neutral-900" autoCapitalize="characters" />
             </div>
             <Button type="button" className="w-full" disabled={busy} onClick={() => void book("upi", utr.trim() || `UPI-${Date.now().toString().slice(-10)}`)}>
-              I have paid — verify
+              I have paid — notify owner
             </Button>
             <button type="button" className="w-full text-xs text-neutral-500" onClick={() => setPhase("pick")}>Other methods</button>
           </div>
@@ -168,14 +162,14 @@ export function Checkout({
               const tag = `**** ${digits.slice(-4)}${cardName ? ` · ${cardName.trim()}` : ""}`;
               void book("card", tag.slice(0, 64));
             }}>
-              Pay {inr(payAmount || remaining)}
+              Report {inr(payAmount || remaining)} to owner
             </Button>
             <button type="button" className="w-full text-xs text-neutral-500" onClick={() => setPhase("pick")}>Other methods</button>
           </div>
         )}
         <p className="flex items-center justify-center gap-1 text-[11px] text-neutral-500">
           <ShieldCheck className="size-3.5" />
-          Secure checkout · receipt with UTR after verify
+          Owner confirms before the bill is marked paid
         </p>
       </div>
     </div>
